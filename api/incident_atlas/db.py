@@ -4,10 +4,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from incident_atlas.config import get_settings
+from incident_atlas.database_urls import runtime_database_url
 
 settings = get_settings()
 engine = create_engine(
-    settings.database_url,
+    runtime_database_url(settings.database_url),
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=5,

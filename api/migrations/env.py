@@ -4,12 +4,19 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from incident_atlas.config import get_settings
+from incident_atlas.database_urls import migration_database_url
 from incident_atlas.models import Base
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
+settings = get_settings()
+config.set_main_option(
+    "sqlalchemy.url",
+    migration_database_url(settings.database_url, settings.migration_database_url).replace(
+        "%", "%%"
+    ),
+)
 target_metadata = Base.metadata
 
 

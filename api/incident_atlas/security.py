@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import ipaddress
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 
@@ -28,6 +29,38 @@ def fingerprint(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def trusted_client_address(
+    peer_address: str | None,
+    forwarded_for: str | None,
+    trusted_proxy_cidrs: list[str],
+) -> str | None:
+    """Use X-Forwarded-For only when the direct peer is explicitly trusted.
+
+    When the proxy chain includes a client-supplied prefix, walk from the trusted
+    socket peer toward the client and select the nearest untrusted hop.
+    """
+    if not peer_address:
+        return None
+    try:
+        peer = ipaddress.ip_address(peer_address)
+    except ValueError:
+        return peer_address
+
+    networks = [ipaddress.ip_network(item, strict=False) for item in trusted_proxy_cidrs]
+    if not any(peer in network for network in networks) or not forwarded_for:
+        return peer.compressed
+
+    try:
+        chain = [ipaddress.ip_address(item.strip()) for item in forwarded_for.split(",")]
+    except ValueError:
+        return peer.compressed
+
+    for candidate in reversed(chain):
+        if not any(candidate in network for network in networks):
+            return candidate.compressed
+    return peer.compressed
+
+
 def enforce_rate_limit(
     db: Session,
     settings: Settings,
@@ -46,7 +79,11 @@ def enforce_rate_limit(
         window = settings.rate_approval_window_seconds
     cutoff = datetime.now(UTC) - timedelta(seconds=window)
     retention_cutoff = datetime.now(UTC) - timedelta(
-        seconds=max(settings.rate_live_window_seconds, settings.rate_approval_window_seconds)
+        seconds=max(
+            settings.rate_live_window_seconds,
+            settings.rate_live_global_window_seconds,
+            settings.rate_approval_window_seconds,
+        )
     )
     db.execute(delete(GuestRateEvent).where(GuestRateEvent.occurred_at < retention_cutoff))
     db.commit()
@@ -80,6 +117,38 @@ def enforce_rate_limit(
     db.add(GuestRateEvent(subject_hash=subject, action=action))
     db.commit()
     return subject
+
+
+def reserve_global_live_budget(db: Session, settings: Settings) -> None:
+    """Atomically reserve one shared model-call slot across visitors and API workers."""
+    global_subject = source_hash(settings, "incident-atlas-global-live-budget-v1")
+    global_cutoff = datetime.now(UTC) - timedelta(seconds=settings.rate_live_global_window_seconds)
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"{global_subject}:live_global"},
+    )
+    global_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(GuestRateEvent)
+            .where(
+                GuestRateEvent.subject_hash == global_subject,
+                GuestRateEvent.action == "live_global",
+                GuestRateEvent.occurred_at >= global_cutoff,
+            )
+        )
+        or 0
+    )
+    if global_count >= settings.rate_live_global_runs:
+        db.rollback()
+        raise ApiError(
+            429,
+            "live_global_limit_reached",
+            "The shared live-investigation budget is exhausted for this time window.",
+            retryable=True,
+        )
+    db.add(GuestRateEvent(subject_hash=global_subject, action="live_global"))
+    db.commit()
 
 
 def acquire_live_slot(maximum: int) -> None:

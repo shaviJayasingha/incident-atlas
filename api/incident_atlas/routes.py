@@ -53,7 +53,7 @@ from incident_atlas.schemas import (
     TimelineEventOut,
     TimelineResponse,
 )
-from incident_atlas.security import enforce_rate_limit
+from incident_atlas.security import enforce_rate_limit, trusted_client_address
 from incident_atlas.service import (
     create_live_investigation,
     get_investigation,
@@ -93,8 +93,13 @@ def _request_id(request: Request) -> str:
     return request.state.request_id
 
 
-def _client_host(request: Request) -> str | None:
-    return request.client.host if request.client else None
+def _client_host(request: Request, settings: Settings) -> str | None:
+    peer = request.client.host if request.client else None
+    return trusted_client_address(
+        peer,
+        request.headers.get("x-forwarded-for"),
+        settings.trusted_proxy_cidrs,
+    )
 
 
 def _effective_window(
@@ -132,7 +137,9 @@ def _incident_card(db: Session, incident: Incident) -> IncidentCard:
 @router.get("/demo-capabilities", response_model=DemoCapabilities)
 def demo_capabilities(request: Request, settings: Cfg) -> DemoCapabilities:
     limit = (
-        f"{settings.rate_live_runs} live runs per "
+        f"Up to {settings.rate_live_global_runs} live runs per "
+        f"{settings.rate_live_global_window_seconds // 3600} hours globally; "
+        f"{settings.rate_live_runs} per "
         f"{settings.rate_live_window_seconds // 60} minutes per visitor hash"
     )
     return DemoCapabilities(
@@ -430,21 +437,9 @@ def snapshot_evidence(
 
 @router.get("/incidents/{incident_id}/replay", response_model=InvestigationReport)
 def replay_for_incident(incident_id: str, request: Request, db: Db) -> InvestigationReport:
-    report = get_replay_for_incident(db, incident_id, _request_id(request))
-    db.add(
-        AuditEvent(
-            id=f"audit-{uuid.uuid4().hex}",
-            occurred_at=datetime.now(UTC),
-            action="replay_served",
-            entity_type="replay",
-            entity_id=report.id,
-            request_id=_request_id(request),
-            actor_hash=None,
-            attributes={"model_call_made": False},
-        )
-    )
-    db.commit()
-    return report
+    # Replay GET is intentionally side-effect-free. Anonymous page views are
+    # not retained as audit events; only state-changing actions are audited.
+    return get_replay_for_incident(db, incident_id, _request_id(request))
 
 
 @router.get("/replays/{replay_id}", response_model=InvestigationReport)
@@ -465,7 +460,7 @@ def run_investigation(
         parsed_key = uuid.UUID(idempotency_key)
     except ValueError:
         raise ApiError(400, "invalid_idempotency_key", "Idempotency-Key must be a UUID.") from None
-    actor = enforce_rate_limit(db, settings, _client_host(request), "live")
+    actor = enforce_rate_limit(db, settings, _client_host(request, settings), "live")
     report, reused = create_live_investigation(
         db=db,
         settings=settings,
@@ -494,7 +489,7 @@ def _create_approval(
     source: Literal["live_ai", "stored_replay"],
     body: ApprovalCreate,
 ) -> ApprovalResponse:
-    actor = enforce_rate_limit(db, settings, _client_host(request), "approval")
+    actor = enforce_rate_limit(db, settings, _client_host(request, settings), "approval")
     if source == "live_ai":
         result = db.get(Investigation, result_id)
         if result is None:

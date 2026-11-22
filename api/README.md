@@ -1,81 +1,60 @@
 # Incident Atlas API
 
-FastAPI backend for the Incident Atlas demo. The service serves deterministic synthetic incidents, immutable evidence snapshots, stored investigation replays, a deterministic rules baseline, and optional live analysis using one OpenAI Responses API request. No route executes a mitigation.
+FastAPI backend for a public incident investigation demo. It serves deterministic synthetic incidents, immutable evidence snapshots, stored replays, a rules baseline, and an optional evidence-bounded live model path. The live model path is disabled in deployment configuration. No endpoint executes a mitigation.
 
-## Requirements
+## Local setup
 
-- Python 3.12
-- PostgreSQL 15 or newer for the deployed service
-- `uv` for locked environment setup (or `pip` with `pyproject.toml`)
+Requirements: Python 3.12, `uv`, and PostgreSQL 15+ (Docker Compose is the simplest path). From the repository root:
 
-The Step 2 workspace has Python 3.12 but no Docker or system PostgreSQL binaries. The dev extra uses the `embedded-postgres` wheel to run an isolated real PostgreSQL server without root or Docker. This execution sandbox blocks Unix-domain socket creation, so its PostgreSQL integration tests are skipped here; use a local PostgreSQL server or set `TEST_DATABASE_URL` to a disposable PostgreSQL 15+ database. See [`docs/backend-handoff.md`](../docs/backend-handoff.md) for the exact check results and blocker.
+```bash
+docker compose up --build
+```
 
-## Setup
+Compose starts PostgreSQL, runs the one-shot `bootstrap` service to migrate and seed runtime fixtures, then starts the API and Vite. Open `http://localhost:5173`; the API is at `http://localhost:8000`. Replay and simulated approval need no model key.
 
-From `api/`:
+To run the API outside Compose, from `api/`:
 
 ```bash
 cp .env.example .env
 uv sync --locked --extra dev --extra observability
+uv run python -m incident_atlas.cli bootstrap-runtime
+uv run uvicorn incident_atlas.main:app --app-dir . --host 127.0.0.1 --port 8000 --reload
 ```
 
-Update `DATABASE_URL` for a local PostgreSQL instance and change the local HMAC key. Live analysis remains disabled until `LIVE_ANALYSIS_ENABLED=true` and a server-side `OPENAI_API_KEY` are configured. The browser never receives the provider key.
+`bootstrap-runtime` applies Alembic migrations and idempotently seeds the three public incidents and saved reports. `DATABASE_URL` can use either `postgresql://` (including Render's URL shape) or `postgresql+psycopg://`; both are normalized to Psycopg 3 for the API and migrations.
 
-## Database and fixtures
+## API and operations
 
-From `api/`:
+- Liveness: `GET /healthz`
+- Database readiness: `GET /readyz`
+- OpenAPI JSON and interactive docs: `/openapi.json`, `/docs`
+- Versioned API base: `/api/v1`
 
-```bash
-uv run alembic upgrade head
-uv run python -m incident_atlas.cli seed-runtime
-uv run python -m incident_atlas.cli seed-evaluation
-uv run python -m incident_atlas.cli fixture-manifest
-```
+The container starts the API without running migrations. Production migrations and runtime seeding run in the Render pre-deploy command with `MIGRATION_DATABASE_URL`; the API receives a separate `DATABASE_URL` for the `incident_atlas_runtime` role. `RUNTIME_DB_PASSWORD` is used to provision or rotate that role, then stripped from the running process. The runtime role can read and write public application tables but cannot read the `evaluation` schema, create schema objects, or update `alembic_version`.
 
-Runtime fixture seeding is idempotent and never loads the ground-truth labels. Evaluation labels are stored in the PostgreSQL `evaluation` schema and loaded only by the explicit evaluation command. The API query layer does not import or query the evaluation model.
+Production requires `PUBLIC_SITE_ORIGIN` to be one exact HTTPS origin and `CORS_ALLOWED_ORIGINS` to match it exactly. `TRUSTED_PROXY_CIDRS` must contain only verified ingress proxy ranges; forwarded headers are ignored unless the direct peer is in that allowlist. The production API refuses to expose live AI unless the global request cap, rate limiting, trusted proxy setup, a server-side key, and the manual provider-verification flag are all present. The checked-in deployment config keeps live AI off.
 
-Run the offline baseline evaluator directly from versioned fixtures and labels:
+## Evaluation data
+
+Ground-truth labels and the expanded evaluation set live under `data/evaluation/`. They are only used by local development and CI evaluation commands. The API image copies only `data/incidents/`; it does not contain the label file. Runtime seeding never loads evaluation labels. To run the deterministic rules reports in local development:
 
 ```bash
 uv run python -m incident_atlas.cli evaluate-fixtures
 uv run python -m incident_atlas.cli evaluate-expanded
 ```
 
-The offline evaluators are not imported by the API request or live model path. Their `expected_primary_label` values are for evaluation only; public rules signals use separate names. The expanded set contains the three base cases, three deterministic positive variants, and three expected-abstention cases.
+These are regression checks on authored synthetic data, not real-world incident accuracy. Do not run `seed-evaluation` against a production database.
 
-## Run the API
+## Tests and checks
 
-```bash
-uv run uvicorn incident_atlas.main:app --app-dir . --host 127.0.0.1 --port 8000 --reload
-```
-
-- Liveness: `GET /healthz`
-- Database readiness: `GET /readyz`
-- OpenAPI JSON: `GET /openapi.json`
-- Swagger UI: `GET /docs`
-- Versioned API base: `/api/v1`
-
-## Run tests
-
-By default, tests start an isolated embedded PostgreSQL server and apply the migrations. Set `TEST_DATABASE_URL` to use a separate disposable PostgreSQL database. The PostgreSQL tests truncate application tables, so do not point it at a shared or production database. Tests deliberately reject SQLite because JSONB, schema separation, advisory locks, database triggers, and constraints are part of the contract.
+Use a disposable PostgreSQL database. The backend integration suite truncates its application tables and verifies migrations, repeatable seeding, least-privilege grants, API contracts, evidence links, replay isolation, rate controls, and persisted simulation approvals.
 
 ```bash
-TEST_DATABASE_URL=postgresql+psycopg://incident_atlas:incident_atlas@localhost:5432/incident_atlas_test \
-  uv run pytest
+uv run pytest -q -rs
 uv run ruff check .
+uv audit --locked
 ```
 
-If an execution sandbox blocks Unix sockets, PostgreSQL-marked tests are reported as skipped while database-independent tests still run. Do not treat skipped integration tests as a PostgreSQL pass. Never point `TEST_DATABASE_URL` at production or a shared database.
+Set `TEST_DATABASE_URL` to use an external disposable PostgreSQL instance. Without it, the suite attempts to start embedded PostgreSQL; constrained sandboxes may block its socket. Skipped database tests are not a PostgreSQL verification. CI uses an actual PostgreSQL service and also builds **and runs** the production API image against production-shaped URL/role settings.
 
-## Configuration
-
-See `.env.example`. `LIVE_ANALYSIS_ENABLED` is a feature switch; `OPENAI_API_KEY` is required to make a live call. Missing configuration leaves replay and read routes available. Set `CORS_ALLOWED_ORIGINS` to exact browser origins. Set `RATE_LIMIT_HMAC_KEY` to a random secret outside development.
-
-## Safety and provenance
-
-- Model input is one server-built, read-only fixture evidence packet. No model function tools, SQL, shell, arbitrary URL, user prompt, or production credentials are exposed.
-- Reports persist evidence snapshot hash, model ID, prompt/schema versions, token usage, request ID, and trace ID.
-- Every reported evidence ID is validated against the recorded snapshot. The evidence route reads only within that snapshot.
-- Replay reports are stored and always return `source=stored_replay` and `model_call_made=false`.
-- Live reports are hypotheses with explicit uncertainty. Invalid output, refusal, unknown evidence, and provider timeout fail explicitly.
-- Approval rows are append-only, simulation-only, and never call an external action.
+See [deployment instructions](../docs/deployment.md), [Step 6 report](../docs/step6-report.md), and the current [pre-deployment release report](../docs/predeployment-release-report.md) for deployment requirements and verified commit details.

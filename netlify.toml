@@ -1,7 +1,10 @@
 [build]
   base = "web"
-  command = "npm ci && npm run build"
+  command = "npm ci && npm run verify:production-api && npm run build"
   publish = "dist"
+
+# Set VITE_API_BASE_URL in the Netlify build environment to the Render API's
+# public HTTPS origin plus /api/v1. The production build fails closed if absent.
 
 [[redirects]]
   from = "/*"

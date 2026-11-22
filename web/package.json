@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "verify:production-api": "node scripts/production-api-config.mjs",
+    "build": "npm run verify:production-api && tsc -b && vite build",
     "test:e2e": "node tests/browser-smoke.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -b --pretty false",
-    "test": "tsc -p tsconfig.integration.json && node tests/prepare.mjs && node --test tests/integration.mjs"
+    "test": "tsc -p tsconfig.integration.json && node tests/prepare.mjs && node --test tests/integration.mjs tests/production-api-config.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "6.3.0",

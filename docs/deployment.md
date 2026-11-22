@@ -1,71 +1,77 @@
 # Deployment plan
 
-**Status:** Step 5 launch configuration prepared; external provisioning and end-to-end production checks remain gated.  
-**Public plan:** GitHub → Netlify static site + Render API/PostgreSQL  
-**Reviewed:** 2026-11-22
+**Target architecture:** GitHub → Netlify static site + Render FastAPI/PostgreSQL.  
+**Current state:** configuration and CI checks are prepared; no public Incident Atlas services have been provisioned. See the [pre-deployment release report](predeployment-release-report.md) for the exact open gates.
 
-## Local Docker Compose topology
+## Local Docker Compose
 
-The checked-in `compose.yaml` defines:
+From the repository root:
 
-| Service | Responsibility | Local port / profile |
-|---|---|---|
-| `web` | React/Vite development server. | `5173`; default profile. |
-| `api` | FastAPI application, migrations, deterministic runtime seeding, and OpenAPI JSON. | `8000`; default profile. |
-| `db` | PostgreSQL 17 with a named volume and readiness check. | `5432`; default profile. |
+```bash
+docker compose up --build
+```
 
-The application uses the seeded synthetic records for incident analysis. `docker compose up --build` starts PostgreSQL, waits for readiness, then the API container migrates and seeds before becoming healthy; the web container starts after API readiness. The live model path stays disabled unless a developer deliberately supplies a server-side `OPENAI_API_KEY` through an untracked local environment. Replay, telemetry, and simulated approval work without it. Compose itself has not been executed in the restricted runner because Docker is not installed.
+Compose starts PostgreSQL 17, waits for readiness, and runs a one-shot `bootstrap` container. That command applies migrations and idempotently seeds runtime incidents and replays. FastAPI then starts as a separate service; it does not run migrations on application startup. The Vite service starts after API readiness at `http://localhost:5173`; API health is at `http://localhost:8000/readyz`. Live AI is off by default. A public replay and simulated approval work without a model credential.
 
-## Public hosting plan
+Local development uses the PostgreSQL owner role for simplicity. This is not the production permission model.
 
-1. Create a public GitHub repository named `incident-atlas` after the blueprint is accepted. Keep scenario and label data synthetic. Add branch protection and CI checks before enabling production deploys.
-2. Connect the `web/` static build to Netlify. Build command: `npm ci && npm run build`; publish directory: `web/dist`. Configure a history fallback for client routes. Set `VITE_API_BASE_URL` to the public API URL at build time; it contains no secret.
-3. Deploy the root `Dockerfile` as an always-on Render web service. Configure TLS, health check `/readyz`, startup migrations and idempotent runtime seed, graceful shutdown, and exact CORS origins. Set the server model API key as a Render secret only when live investigation is intentionally enabled; never expose it in Vite variables, client bundles, build logs, or API responses.
-4. Attach a managed Render PostgreSQL database in the same region. Use private networking, least-privilege runtime credentials, backups, and backward-compatible migrations. Render Free Postgres is temporary and unsuitable for a durable public demo.
-5. Seed the three fixture scenarios and stored replay records as a deploy step that is safe to repeat. Verify health, catalogue, replay, live capability status, one live run, and a simulated approval before pointing the public site at the deployment.
-6. Set usage alerts for hosting and model spend, retain health/error/request metrics, and document how to disable live analysis without disabling stored replay.
+## Production topology
 
 ```mermaid
 flowchart TB
-  G["GitHub main and pull requests"] --> N["Netlify static build and CDN"]
-  G --> R["Render API container"]
-  N -->|"HTTPS JSON"| R
-  R -->|"private database connection"| D[("Render PostgreSQL")]
-  R -->|"server-side key; live route only"| O["OpenAI Responses API"]
-  R -->|"health, logs, metrics"| M["Render monitoring and alerts"]
-  B["Browser visitor"] --> N
+  G["GitHub source and CI"] --> N["Netlify static React/Vite site"]
+  G --> R["Render FastAPI container"]
+  B["Visitor browser"] --> N
+  N -->|"HTTPS JSON; VITE_API_BASE_URL"| R
+  R -->|"runtime role; private connection"| D[("Render PostgreSQL")]
+  P["Render pre-deploy command"] -->|"migration role; migrate and seed"| D
+  R -->|"optional server-side request; disabled by default"| O["OpenAI Responses API"]
 ```
 
-## Deployment configuration
+The API image includes `data/incidents/` only. `.dockerignore` excludes `data/evaluation/` and answer-key files; CI checks the built image filesystem. Local development and CI retain evaluation files in the source checkout.
 
-| Variable | Where | Secret? | Purpose |
-|---|---|---:|---|
-| `VITE_API_BASE_URL` | Netlify build environment | No | Public API origin compiled into the static site. |
-| `DATABASE_URL` | API host secret | Yes | PostgreSQL connection string. |
-| `OPENAI_API_KEY` | API host secret | Yes | Provider credential; omit to disable live analysis. |
-| `OPENAI_MODEL` | API host environment | No | Selected model name; persisted per run and pinned in deployment configuration. |
-| `LIVE_ANALYSIS_ENABLED` | API host environment | No | Kill switch; false still leaves replay and read routes enabled. |
-| `CORS_ALLOWED_ORIGINS` | API host environment | No | Exact production and preview origins allowed. |
-| `RATE_LIMIT_HMAC_KEY` | API host secret | Yes | Rotating keyed hash for anonymous rate accounting; raw IP not persisted. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | API host environment | No | Optional operational trace/metric export endpoint. |
+## Required production configuration
 
-## Deployment and rollback
+Configure these values only after a hosting budget and account access are approved:
 
-- Pull requests build web and API images, apply database migration checks to a disposable database, load fixtures, and run the documented CI suite before merge.
-- Deploy API and web from the same Git SHA; display build SHA and fixture version in the methodology page.
-- Run additive database migrations before code that depends on them. Seed changes are fixture-versioned and replay reports keep their producing version.
-- If live analysis is unhealthy or over budget, set `LIVE_ANALYSIS_ENABLED=false`; do not disable replay. Roll back the API image independently from static UI if API compatibility is maintained.
-- Keep a backup/restore runbook for hosted database and a scripted fixture reseed path. Do not rely on a free, expiring database for the durable public demo.
+| Setting | Service | Required value / boundary |
+|---|---|---|
+| `VITE_API_BASE_URL` | Netlify build environment | Public API HTTPS origin plus exactly `/api/v1`, e.g. `https://<Render API hostname>/api/v1`. The production URL check rejects unset, relative, HTTP, wrong-path, credential, query, or fragment values before build. |
+| `PUBLIC_SITE_ORIGIN` | Render API | The exact Netlify HTTPS origin with no path, such as `https://<site>.netlify.app`. |
+| `CORS_ALLOWED_ORIGINS` | Render API | Exactly the same single value as `PUBLIC_SITE_ORIGIN`; production settings reject a mismatch or extra origins. |
+| `DATABASE_URL` | Render API runtime | PostgreSQL URL authenticated as `incident_atlas_runtime`; `postgresql://` is normalized to `postgresql+psycopg://`. |
+| `MIGRATION_DATABASE_URL` | Render pre-deploy | Render database owner/migration URL. It is used only by the one-shot `deploy-bootstrap` command. |
+| `RUNTIME_DB_PASSWORD` | Render pre-deploy | Strong random password for the restricted runtime role. It is stripped before the API process starts. |
+| `TRUSTED_PROXY_CIDRS` | Render API | CIDRs verified for the direct ingress proxy path. Do not use guessed private ranges or a wildcard. `X-Forwarded-For` is ignored unless the socket peer belongs to this allowlist. |
+| `RATE_LIMIT_HMAC_KEY` | Render API secret | Random secret used to hash source addresses; raw addresses are not stored. |
+| `RATE_LIMIT_ENABLED` | Render API | `true`. Required for live analysis. |
+| `RATE_LIVE_GLOBAL_RUNS` / `RATE_LIVE_GLOBAL_WINDOW_SECONDS` | Render API | Shared PostgreSQL-backed call budget across all visitors and instances; initial config is five requests per 24 hours. |
+| `LIVE_ANALYSIS_ENABLED` | Render API | `false` until the proxy configuration and global cap are deployed and a genuine provider request has been verified. |
+| `OPENAI_API_KEY` | Render API secret, only if enabled | Server-side credential only. Never a `VITE_` variable and never present in the browser bundle. |
 
-## Cost envelope and operations
+The Render Blueprint intentionally leaves the API URL, site origin, CORS origin, runtime database URL/password, and trusted proxy CIDRs for account-specific configuration. No hostname or proxy range is guessed in the repository. The API refuses to start in production if `PUBLIC_SITE_ORIGIN` and CORS do not match exactly or the runtime database URL uses the owner role.
 
-Use an always-on low-resource API service plus managed PostgreSQL for a dependable public link. The 2026-11-22 check of Render's current public pricing lists the low-end always-on web service at **$7/month** and the smallest paid PostgreSQL compute at **$6/month**, approximately **$13/month** combined before storage, transfer, tax, and growth. Render Free web services sleep after 15 minutes idle, and Free Postgres expires after 30 days, has a 1 GB cap, and lacks backups; those limits do not meet this persistent public-demo plan. Netlify Free currently has a **300-credit monthly hard limit**; production deploys consume 15 credits, bandwidth consumes 20 credits/GB, and requests consume 2 credits/10,000. Free has no auto-recharge. Render/Netlify terms and actual account plan may differ and were not provisioned here. The $13/mo recurring hosting cost is a planning envelope, not an approved charge.
+### Database roles and deploy sequence
 
-Model cost is variable. Keep replay at zero inference cost. Bound live evidence and output tokens, record actual input/output usage per run, and configure a low monthly provider budget/alert. The evaluation plan gives the per-run cost equation and initial public quota; re-check the provider price page at implementation and launch.
+Render's `preDeployCommand` runs `uv run python -m incident_atlas.cli deploy-bootstrap`. It connects using `MIGRATION_DATABASE_URL`, creates or rotates the `incident_atlas_runtime` login, applies migrations, and seeds only runtime fixtures. It then grants the runtime role application-table access while revoking access to the `evaluation` schema, object creation in `public`, and changes to `public.alembic_version`. The API receives only `DATABASE_URL` for `incident_atlas_runtime`; `docker-start.sh` removes migration credentials from its environment before launching Uvicorn. A PostgreSQL integration test checks the actual grants, and CI runs the built image through this deploy/startup path.
 
-## Reference documentation consulted
+The migration URL must be a database owner/migration connection with permission to create roles and apply migrations. `RUNTIME_DB_PASSWORD` is available to the pre-deploy command because Render supplies the service environment there; the API start script removes it before starting the request process. Do not use the runtime URL to run migrations.
 
-- [Vite static deployment](https://vite.dev/guide/static-deploy) and [production builds](https://vite.dev/guide/build).
-- [Render web services](https://render.com/docs/web-services), [managed PostgreSQL](https://render.com/docs/postgresql), [free-tier limits](https://render.com/docs/free), [Blueprint spec](https://render.com/docs/blueprint-spec), and [current pricing](https://render.com/pricing) (checked 2026-11-22).
-- [Netlify plans and usage](https://www.netlify.com/pricing/) and [credit-based plan details](https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/credit-based-pricing-plans/) (checked 2026-11-22).
-- [OpenAI API pricing](https://developers.openai.com/api/docs/pricing).
+## CI and release procedure
+
+GitHub Actions runs:
+
+1. PostgreSQL 17 migrations, repeated seed and manifest comparisons, backend integration tests, lint, dependency audit, and both rules evaluation reports. The tests use Render-shaped `postgresql://` URLs.
+2. Frontend integration tests, typecheck, fail-closed API URL checks, production build against a reserved `.invalid` test URL, and dependency audit.
+3. API image build and runtime check with a disposable PostgreSQL service: production-shaped URLs, least-privilege bootstrap, readiness, stored replay provenance, evidence lookup, and persisted simulation approval.
+4. Playwright against local CI PostgreSQL, FastAPI, and Vite; it captures desktop and mobile screenshots. These screenshots describe the local CI run, not a public deployment.
+
+After approval of hosting spend and account access, configure the real exact URLs, deploy API and web from the same tested revision, check `/readyz`, then complete the no-key replay → evidence → acknowledged approval journey in desktop and mobile browsers. Keep live analysis off until the shared cap is effective and one genuine server-side provider request is recorded. Never create recurring hosted resources without an approved spending cap.
+
+## Rollback and provenance
+
+- If API behavior or live analysis is unhealthy, set `LIVE_ANALYSIS_ENABLED=false`; stored replays remain available.
+- Deploy API and static web from the same tested commit. The API migration path is an explicit pre-deploy step; runtime startup never migrates.
+- The incident corpus is project-authored deterministic synthetic data shaped like OpenTelemetry evidence. It is not imported from an OpenTelemetry Demo instance and does not represent production telemetry.
+- The three base cases and nine derived variants are regression cases only. Report their measured rules baseline separately from mocked provider tests and any genuine live results.
+- The shared daily model cap is a spending-control ceiling, not a billing account limit. Configure provider-side limits separately before enabling live inference.

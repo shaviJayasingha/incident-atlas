@@ -4,6 +4,7 @@ import json
 from sqlalchemy import select
 
 from incident_atlas.db import SessionLocal
+from incident_atlas.deployment import bootstrap_deployment_database, bootstrap_local_database
 from incident_atlas.evaluation import evaluate_expanded_dataset, evaluate_fixture_dataset
 from incident_atlas.fixtures import fixture_manifest, seed_evaluation, seed_runtime
 from incident_atlas.models import EvidenceSnapshot, Incident, SnapshotEvidence
@@ -59,6 +60,8 @@ def main() -> None:
             "rules-baseline",
             "evaluate-fixtures",
             "evaluate-expanded",
+            "bootstrap-runtime",
+            "deploy-bootstrap",
         ],
     )
     args = parser.parse_args()
@@ -67,6 +70,12 @@ def main() -> None:
         return
     if args.command == "evaluate-expanded":
         print(json.dumps(evaluate_expanded_dataset(), indent=2, sort_keys=True))
+        return
+    if args.command == "bootstrap-runtime":
+        print(json.dumps(bootstrap_local_database(), indent=2, sort_keys=True))
+        return
+    if args.command == "deploy-bootstrap":
+        print(json.dumps(bootstrap_deployment_database(), indent=2, sort_keys=True))
         return
     with SessionLocal() as db:
         if args.command == "seed-runtime":
