@@ -373,6 +373,27 @@ def test_live_success_persists_trace_provenance_and_snapshot_links(pg_client, mo
     )
 
 
+def test_synthetic_live_report_deep_link_is_readable_across_visitors(pg_client, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from incident_atlas.main import app
+
+    created = _run_live(pg_client, monkeypatch)
+    assert created.status_code == 201
+    report_id = created.json()["id"]
+
+    # Live reports only use public synthetic fixtures, and deep links intentionally need no
+    # visitor session. This test documents the sharing boundary; it is not private user data.
+    with TestClient(app, client=("203.0.113.19", 51234)) as another_visitor:
+        response = another_visitor.get(f"/api/v1/investigations/{report_id}")
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["source"] == "live_ai"
+    assert report["model_call_made"] is True
+    assert "expected_primary_label" not in json.dumps(report)
+
+
 def test_replay_and_live_approvals_are_acknowledged_simulations(pg_client, monkeypatch):
     replay_report = pg_client.get("/api/v1/replays/replay-cache-v1").json()
     hypothesis = replay_report["hypotheses"][0]
