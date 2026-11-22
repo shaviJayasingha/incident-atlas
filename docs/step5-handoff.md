@@ -43,7 +43,7 @@ Observed raw file SHA-256 values:
 | Source | SHA-256 |
 |---|---|
 | `data/incidents/scenarios.json` | `6a8eea31a04e09e59d0c3ade764995c13761638c1f9994316c1596cb2ad7c2cf` |
-| `data/incidents/replays.json` | `bf79365af69e27495e325804456a03297e16f71cc60860f03930b35106c973d9` |
+| `data/incidents/replays.json` (Step 5 contract-aligned source) | `438c73cd36dcbe214cc3669d19188c5e63a266822090f9da5b8c263af75a46b5` |
 | `data/evaluation/labels.json` | `a50413a43dce171cf80d6a9a1c5e1845b0db078a2f22c19d718c2d8ef0164e63` |
 
 The evaluator's canonical labels dataset hash is `8dd1412c520acda5eb90d4e8f5b7ebd861e616967b1d0bc2897c19ccf142cdca`. Existing per-snapshot evidence hashes and evidence counts are recorded in [`backend-handoff.md`](backend-handoff.md); Step 5 has not regenerated them against a PostgreSQL server.

@@ -233,6 +233,7 @@ class HypothesisOut(StrictModel):
 
 class RuleFire(StrictModel):
     rule_id: str
+    label: str
     evidence_ids: list[str]
 
 

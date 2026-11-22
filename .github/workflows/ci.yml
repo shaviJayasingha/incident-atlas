@@ -52,10 +52,19 @@ jobs:
           uv run python -m incident_atlas.cli fixture-manifest > /tmp/manifest-second.json
           diff -u /tmp/seed-first.json /tmp/seed-second.json
           diff -u /tmp/manifest-first.json /tmp/manifest-second.json
+          cat /tmp/manifest-first.json
       - name: Run PostgreSQL and backend checks
         run: uv run pytest -q -rs
       - name: Lint backend
         run: uv run ruff check .
+
+  container:
+    needs: backend-postgres
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -f Dockerfile -t incident-atlas-api:ci .
 
   frontend:
     runs-on: ubuntu-latest

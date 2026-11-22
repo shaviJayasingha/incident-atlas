@@ -160,7 +160,7 @@ export interface HypothesisOut {
 export interface RulesBaselineOut {
   version: string
   ranked_labels: string[]
-  fired_rules: Array<{ rule_id: string; evidence_ids: string[] }>
+  fired_rules: Array<{ rule_id: string; label: string; evidence_ids: string[] }>
 }
 
 export interface InvestigationReport {

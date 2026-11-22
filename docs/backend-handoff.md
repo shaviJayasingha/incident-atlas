@@ -73,7 +73,7 @@ Snapshot hashes use canonical JSON over the exact timestamped evidence items bui
 Additional content hashes:
 
 - `data/incidents/scenarios.json` file SHA-256: `6a8eea31a04e09e59d0c3ade764995c13761638c1f9994316c1596cb2ad7c2cf`
-- `data/incidents/replays.json` file SHA-256: `bf79365af69e27495e325804456a03297e16f71cc60860f03930b35106c973d9`
+- `data/incidents/replays.json` file SHA-256 at Step 2: `bf79365af69e27495e325804456a03297e16f71cc60860f03930b35106c973d9`
 - Canonical evaluation dataset SHA-256: `8dd1412c520acda5eb90d4e8f5b7ebd861e616967b1d0bc2897c19ccf142cdca`
 
 ## Rules-baseline results
@@ -126,3 +126,7 @@ The one-request strict-schema request construction test also passed. PostgreSQL-
 - Git repository initialization and remote wiring remain blocked by the read-only Git metadata mount and unavailable create-repository operation described above.
 
 The API does not claim successful diagnosis: model outputs and curated replay findings are hypotheses, evidence-linked to a recorded snapshot, and user approvals only record a simulation.
+
+## Step 5 data-contract amendment
+
+Step 5 aligned the strict public `RuleFire` response schema with the deterministic rules object by including its already-public signal `label` alongside `rule_id` and cited evidence IDs. The three stored replays and the development fixture adapter now carry those labels consistently. Runtime evidence snapshot content and snapshot hashes are unchanged. The amended replay JSON raw-file SHA-256 is recorded in [`step5-handoff.md`](step5-handoff.md).
