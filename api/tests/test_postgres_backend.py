@@ -119,6 +119,9 @@ def test_runtime_role_cannot_read_evaluation_or_run_migrations(clean_postgres):
 
     from incident_atlas.deployment import _provision_role, apply_runtime_grants
 
+    with SessionLocal() as db:
+        seed_runtime(db)
+
     role_name = "incident_atlas_runtime_ci"
     with engine.begin() as connection:
         _provision_role(connection, "ci-runtime-password", role_name)
@@ -557,7 +560,8 @@ def test_replay_and_live_approvals_are_acknowledged_simulations(pg_client, monke
         assert all(
             item.simulation_only and not item.external_action_performed for item in approvals
         )
-        assert db.scalar(select(func.count()).select_from(GuestRateEvent)) == 0
+        rate_actions = db.scalars(select(GuestRateEvent.action)).all()
+        assert sorted(rate_actions) == ["approval", "live", "live_global"]
 
 
 def test_replay_approval_is_deduplicated_per_visitor(pg_client):
