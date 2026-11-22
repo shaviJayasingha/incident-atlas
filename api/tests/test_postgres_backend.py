@@ -236,13 +236,17 @@ def test_live_failure_paths_are_explicit(pg_client, monkeypatch, error, status, 
 
 
 def test_unknown_live_evidence_id_is_rejected(pg_client, monkeypatch):
+    with SessionLocal() as db:
+        seeded_hypothesis_count = db.scalar(select(func.count()).select_from(Hypothesis))
     response = _run_live(pg_client, monkeypatch, result=_provider_result("ev-not-in-snapshot"))
     assert response.status_code == 502
     assert response.json()["code"] == "invalid_model_output"
     with SessionLocal() as db:
         run = db.scalar(select(Investigation).order_by(Investigation.started_at.desc()))
         assert run.status == "invalid_output"
-        assert db.scalar(select(func.count()).select_from(Hypothesis)) == 1  # replay only
+        # The rejection must not persist model hypotheses; the three fixture
+        # replay hypotheses seeded for this test remain unchanged.
+        assert db.scalar(select(func.count()).select_from(Hypothesis)) == seeded_hypothesis_count
 
 
 def test_live_success_persists_trace_provenance_and_snapshot_links(pg_client, monkeypatch):
