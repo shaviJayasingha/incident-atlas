@@ -2,7 +2,7 @@
 
 ## Make incident reasoning reviewable
 
-Incident Atlas is a public-facing incident investigation demo built around a concrete visitor path: choose a synthetic incident, inspect its timeline and service graph, read metrics/logs/traces, open a stored report, trace each citation to a snapshot record, and approve a simulation. It requires no account or visitor model key. Root causes remain hypotheses, and the approval endpoint never changes another system.
+Incident Atlas is a no-sign-in incident investigation product prepared for a public demo. Its visitor path is concrete: choose a synthetic incident, inspect its timeline and service graph, read metrics/logs/traces, open a stored report, trace each citation to a snapshot record, and approve a simulation. It requires no visitor model key. Root causes remain hypotheses, and the approval endpoint never changes another system.
 
 ## Product and architecture
 
@@ -42,4 +42,4 @@ _Mobile dashboard — 390 px viewport in the local CI browser run._
 
 ## Release status
 
-Source: [GitHub repository](https://github.com/shaviJayasingha/incident-atlas). The current release has CI and local container checks, but the Netlify site, Render API, and production database have not been provisioned. There is no public demo URL. Deployment requires an approved hosting spending cap and account access; live AI additionally requires proxy-range verification and a genuine server-side provider request. Current evidence and exact gates are in the [pre-deployment release report](predeployment-release-report.md).
+Source: [GitHub repository](https://github.com/shaviJayasingha/incident-atlas). The code has CI checks, including a container runtime exercise, but the Netlify site, Render API, and production database have not been provisioned. There is no public demo URL. Deployment requires an approved hosting spending cap and account access; live AI additionally requires proxy-range verification and a genuine server-side provider request. Current evidence and exact gates are in the [pre-deployment release report](predeployment-release-report.md).
