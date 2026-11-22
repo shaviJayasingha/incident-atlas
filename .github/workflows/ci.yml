@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: incident_atlas_test
+          POSTGRES_USER: incident_atlas
+          POSTGRES_PASSWORD: incident_atlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U incident_atlas -d incident_atlas_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: api
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://incident_atlas:incident_atlas@localhost:5432/incident_atlas_test
+      DATABASE_URL: postgresql+psycopg://incident_atlas:incident_atlas@localhost:5432/incident_atlas_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: latest
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked backend dependencies
+        run: uv sync --locked --extra dev --extra observability
+      - name: Migrate and verify repeatable runtime seeding
+        run: |
+          uv run alembic upgrade head
+          uv run python -m incident_atlas.cli seed-runtime > /tmp/seed-first.json
+          uv run python -m incident_atlas.cli fixture-manifest > /tmp/manifest-first.json
+          uv run python -m incident_atlas.cli seed-runtime > /tmp/seed-second.json
+          uv run python -m incident_atlas.cli fixture-manifest > /tmp/manifest-second.json
+          diff -u /tmp/seed-first.json /tmp/seed-second.json
+          diff -u /tmp/manifest-first.json /tmp/manifest-second.json
+      - name: Run PostgreSQL and backend checks
+        run: uv run pytest -q -rs
+      - name: Lint backend
+        run: uv run ruff check .
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build

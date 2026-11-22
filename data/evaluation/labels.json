@@ -1,0 +1,38 @@
+{
+  "label_version": "labels-v1",
+  "cases": [
+    {
+      "case_id":"case-cache-v1",
+      "incident_id":"inc-cache-collapse-001",
+      "fixture_version":"1.0.0",
+      "expected_primary_label":"cache_key_version_mismatch",
+      "acceptable_secondary_labels":["cache_warmup_mismatch"],
+      "expected_supporting_evidence_ids":["ev-deploy-catalog-042","ev-cache-hit-ratio-drop","ev-catalog-p95-rise","ev-catalog-db-read-rise","ev-trace-cache-miss-17","ev-trace-db-query-17"],
+      "expected_contradicting_evidence_ids":[],
+      "expected_abstention":false,
+      "notes":"Cache miss collapse follows a key-prefix release marker; Redis stays reachable."
+    },
+    {
+      "case_id":"case-pool-v1",
+      "incident_id":"inc-inventory-pool-002",
+      "fixture_version":"1.0.0",
+      "expected_primary_label":"inventory_connection_leak",
+      "acceptable_secondary_labels":["connection_pool_exhaustion"],
+      "expected_supporting_evidence_ids":["ev-worker-release-118","ev-pool-in-use-full","ev-pool-wait-rise","ev-log-pool-timeout-9","ev-trace-db-acquire-31"],
+      "expected_contradicting_evidence_ids":["ev-db-query-stable"],
+      "expected_abstention":false,
+      "notes":"Pool exhaustion and acquisition wait dominate; SQL execution stays stable."
+    },
+    {
+      "case_id":"case-gateway-v1",
+      "incident_id":"inc-payment-gateway-003",
+      "fixture_version":"1.0.0",
+      "expected_primary_label":"upstream_payment_gateway_latency",
+      "acceptable_secondary_labels":["retry_amplification"],
+      "expected_supporting_evidence_ids":["ev-gateway-latency-start","ev-gateway-p95-slow","ev-payment-timeout-rate","ev-payment-retry-rise","ev-trace-gateway-slow-44","ev-trace-retry-44"],
+      "expected_contradicting_evidence_ids":["ev-payment-db-stable"],
+      "expected_abstention":false,
+      "notes":"Slow dependency span is primary; the retry is an amplifier, not the initiating fault."
+    }
+  ]
+}

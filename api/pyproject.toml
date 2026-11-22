@@ -1,0 +1,49 @@
+[project]
+name = "incident-atlas-api"
+version = "0.1.0"
+description = "Bounded AI-assisted incident investigation API for Incident Atlas"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "alembic>=1.17,<2",
+  "fastapi>=0.141,<1",
+  "httpx>=0.28,<1",
+  "pydantic-settings>=2.12,<3",
+  "psycopg[binary]>=3.2,<4",
+  "sqlalchemy>=2.0.45,<3",
+  "uvicorn[standard]>=0.38,<1",
+]
+
+[project.optional-dependencies]
+observability = [
+  "opentelemetry-api>=1.38,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.38,<2",
+  "opentelemetry-instrumentation-fastapi>=0.59b0,<1",
+  "opentelemetry-sdk>=1.38,<2",
+]
+dev = [
+  "embedded-postgres>=18.6.3,<19",
+  "pytest>=8.4,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.14,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["incident_atlas"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = ["postgres: requires a real PostgreSQL database"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+

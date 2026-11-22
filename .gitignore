@@ -1,0 +1,35 @@
+# Local Python environments and build output
+.venv/
+api/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+dist/
+build/
+node_modules/
+*.tsbuildinfo
+web/.vite/
+web/.test-build/
+
+# Local secrets and databases
+.env
+.env.*
+!.env.example
+!web/.env.development.fixture.example
+api/.env
+api/.env.*
+!api/.env.example
+.postgres-data/
+postgres-data/
+.netlify/
+.git-step5/
+.codex/
+
+# Editor and OS state
+.DS_Store
+.idea/
+.vscode/

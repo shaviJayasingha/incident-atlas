@@ -1,0 +1,35 @@
+{
+  "replay_version": "replay-v1",
+  "reports": [
+    {
+      "id": "replay-cache-v1",
+      "incident_id": "inc-cache-collapse-001",
+      "created_at": "2026-01-15T10:25:00Z",
+      "uncertainty": "The timing and independent cache, database, and trace signals support this explanation. The fixture does not include a before-and-after configuration diff, so the causal link remains a hypothesis.",
+      "hypotheses": [
+        {"id":"hyp-cache-v1-1","rank":1,"statement":"A cache key prefix change caused a sharp rise in misses, shifting catalog reads to the database.","confidence":"high","confidence_note":"The hit ratio drop begins after the deployment marker; database read latency and volume then rise, while Redis remains reachable.","supporting_evidence_ids":["ev-deploy-catalog-042","ev-cache-hit-ratio-drop","ev-catalog-p95-rise","ev-catalog-db-read-rise","ev-trace-cache-miss-17","ev-trace-db-query-17"],"contradicting_evidence_ids":[],"next_read_only_check":"Compare the deployed cache key prefix with the previous fixture version and verify the prewarm namespace.","mitigation_id":"mit-cache-v1","mitigation_summary":"Simulate restoring the previous cache key prefix and warming that namespace."}
+      ],
+      "rules_baseline": {"version":"rules-v1","ranked_labels":["cache_miss_after_release_signal"],"fired_rules":[{"rule_id":"cache-miss-after-deploy","evidence_ids":["ev-deploy-catalog-042","ev-cache-hit-ratio-drop","ev-catalog-db-read-rise"]}]}
+    },
+    {
+      "id": "replay-pool-v1",
+      "incident_id": "inc-inventory-pool-002",
+      "created_at": "2026-01-15T12:25:00Z",
+      "uncertainty": "Pool saturation and long acquisition waits explain the request delay while database query time stays stable. The fixture shows a release marker but not the source code path that failed to return the connection.",
+      "hypotheses": [
+        {"id":"hyp-pool-v1-1","rank":1,"statement":"Inventory connections are not being returned on an error path, exhausting the pool and queueing requests.","confidence":"high","confidence_note":"Pool use reaches its 40 connection limit and acquisition spans wait 1.8 seconds; SQL execution remains near baseline.","supporting_evidence_ids":["ev-worker-release-118","ev-pool-in-use-full","ev-pool-wait-rise","ev-log-pool-timeout-9","ev-trace-db-acquire-31","ev-db-query-stable"],"contradicting_evidence_ids":[],"next_read_only_check":"Inspect connection release metrics and the inventory worker error path associated with the release marker.","mitigation_id":"mit-pool-v1","mitigation_summary":"Simulate rolling back the inventory worker release and validating connection return behavior."}
+      ],
+      "rules_baseline": {"version":"rules-v1","ranked_labels":["inventory_pool_saturation_signal"],"fired_rules":[{"rule_id":"pool-saturation-with-stable-query","evidence_ids":["ev-pool-in-use-full","ev-pool-wait-rise","ev-db-query-stable"]}]}
+    },
+    {
+      "id": "replay-gateway-v1",
+      "incident_id": "inc-payment-gateway-003",
+      "created_at": "2026-01-15T14:25:00Z",
+      "uncertainty": "The slow downstream span is the clearest signal and internal database latency stays stable. The fixture's synthetic fault marker identifies the gateway delay, but this does not establish how a real provider would recover.",
+      "hypotheses": [
+        {"id":"hyp-gateway-v1-1","rank":1,"statement":"Slow card gateway responses exceed the payment deadline; retries then amplify timeout symptoms.","confidence":"high","confidence_note":"The gateway child span exceeds the 2 second deadline, payment timeouts and retries rise, and payment database latency stays stable.","supporting_evidence_ids":["ev-gateway-latency-start","ev-gateway-p95-slow","ev-payment-timeout-rate","ev-payment-retry-rise","ev-trace-gateway-slow-44","ev-trace-retry-44","ev-payment-db-stable","ev-checkout-payment-tail"],"contradicting_evidence_ids":[],"next_read_only_check":"Compare gateway timeout and retry telemetry with the payment service deadline and inspect provider status separately.","mitigation_id":"mit-gateway-v1","mitigation_summary":"Simulate reducing retry amplification and routing slow gateway calls through a controlled fallback."}
+      ],
+      "rules_baseline": {"version":"rules-v1","ranked_labels":["downstream_gateway_latency_signal"],"fired_rules":[{"rule_id":"slow-downstream-with-retries","evidence_ids":["ev-gateway-latency-start","ev-gateway-p95-slow","ev-payment-timeout-rate","ev-payment-retry-rise","ev-payment-db-stable"]}]}
+    }
+  ]
+}
