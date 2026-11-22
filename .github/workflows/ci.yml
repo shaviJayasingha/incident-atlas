@@ -151,7 +151,7 @@ jobs:
           assert evidence['evidence_id'] == evidence_id
           payload = json.dumps({
               'hypothesis_id': hypothesis['id'],
-              'mitigation_id': hypothesis['mitigation_id'],
+              'mitigation_id': hypothesis['mitigation']['id'],
               'simulation_acknowledged': True,
           }).encode()
           approval_url = base + '/replays/replay-cache-v1/mitigation-approvals'
