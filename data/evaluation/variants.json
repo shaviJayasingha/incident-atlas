@@ -1,0 +1,105 @@
+{
+  "dataset_version": "variants-v1",
+  "cases": [
+    {
+      "case_id": "case-cache-shifted-severity-v1",
+      "incident_id": "inc-cache-collapse-001",
+      "variant_of": "case-cache-v1",
+      "metric_changes": [
+        {"metric_name": "catalog.cache.hit_ratio", "index": 7, "value": 0.18},
+        {"metric_name": "catalog.http.server.duration.p95", "index": 7, "value": 1550},
+        {"metric_name": "catalog-db.query.duration.p95", "index": 7, "value": 350}
+      ],
+      "remove_timeline_ids": [],
+      "expected_primary_label": "cache_key_version_mismatch",
+      "expected_supporting_evidence_ids": ["ev-deploy-catalog-042", "ev-cache-hit-ratio-drop", "ev-catalog-p95-rise", "ev-catalog-db-read-rise", "ev-trace-cache-miss-17", "ev-trace-db-query-17"],
+      "expected_abstention": false,
+      "notes": "A less severe cache hit collapse retains the release and cache miss evidence."
+    },
+    {
+      "case_id": "case-pool-shifted-severity-v1",
+      "incident_id": "inc-inventory-pool-002",
+      "variant_of": "case-pool-v1",
+      "metric_changes": [
+        {"metric_name": "inventory.db.pool.in_use", "index": 9, "value": 39},
+        {"metric_name": "inventory.db.pool.wait_ms.p95", "index": 9, "value": 1700}
+      ],
+      "remove_timeline_ids": [],
+      "expected_primary_label": "inventory_connection_leak",
+      "expected_supporting_evidence_ids": ["ev-worker-release-118", "ev-pool-in-use-full", "ev-pool-wait-rise", "ev-log-pool-timeout-9", "ev-trace-db-acquire-31"],
+      "expected_abstention": false,
+      "notes": "Pool occupancy remains near capacity with waits and stable SQL execution."
+    },
+    {
+      "case_id": "case-gateway-shifted-severity-v1",
+      "incident_id": "inc-payment-gateway-003",
+      "variant_of": "case-gateway-v1",
+      "metric_changes": [
+        {"metric_name": "card_gateway.authorize.duration.p95", "index": 9, "value": 2800},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 9, "value": 0.15},
+        {"metric_name": "payment.retry_per_request", "index": 9, "value": 0.85}
+      ],
+      "remove_timeline_ids": [],
+      "expected_primary_label": "upstream_payment_gateway_latency",
+      "expected_supporting_evidence_ids": ["ev-gateway-latency-start", "ev-gateway-p95-slow", "ev-payment-timeout-rate", "ev-payment-retry-rise", "ev-trace-gateway-slow-44", "ev-trace-retry-44"],
+      "expected_abstention": false,
+      "notes": "Gateway latency remains over its deadline with corroborating timeout and retry signals."
+    },
+    {
+      "case_id": "case-cache-ambiguous-no-release-v1",
+      "incident_id": "inc-cache-collapse-001",
+      "variant_of": "case-cache-v1",
+      "metric_changes": [],
+      "remove_timeline_ids": ["ev-deploy-catalog-042"],
+      "expected_primary_label": null,
+      "expected_supporting_evidence_ids": [],
+      "expected_abstention": true,
+      "notes": "Cache and database symptoms remain, but the causal release marker is absent."
+    },
+    {
+      "case_id": "case-pool-ambiguous-sql-slow-v1",
+      "incident_id": "inc-inventory-pool-002",
+      "variant_of": "case-pool-v1",
+      "metric_changes": [
+        {"metric_name": "inventory-db.query.duration.p95", "index": 7, "value": 180}
+      ],
+      "remove_timeline_ids": [],
+      "expected_primary_label": null,
+      "expected_supporting_evidence_ids": [],
+      "expected_abstention": true,
+      "notes": "Pool waits coexist with a substantial SQL latency regression, so the rules avoid naming a connection leak."
+    },
+    {
+      "case_id": "case-gateway-ambiguous-no-retry-v1",
+      "incident_id": "inc-payment-gateway-003",
+      "variant_of": "case-gateway-v1",
+      "metric_changes": [
+        {"metric_name": "payment.authorization.timeout_rate", "index": 6, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 7, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 8, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 9, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 10, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 11, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 12, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 13, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 14, "value": 0.02},
+        {"metric_name": "payment.authorization.timeout_rate", "index": 15, "value": 0.02},
+        {"metric_name": "payment.retry_per_request", "index": 6, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 7, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 8, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 9, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 10, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 11, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 12, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 13, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 14, "value": 0.2},
+        {"metric_name": "payment.retry_per_request", "index": 15, "value": 0.2}
+      ],
+      "remove_timeline_ids": [],
+      "expected_primary_label": null,
+      "expected_supporting_evidence_ids": [],
+      "expected_abstention": true,
+      "notes": "Gateway latency is elevated, but the expected timeout and retry corroboration is absent."
+    }
+  ]
+}

@@ -20,6 +20,15 @@ def test_rules_baseline_is_deterministic_and_scores_all_base_cases():
     assert first["metrics"]["top_1_accuracy"] == 1.0
     assert first["metrics"]["abstention_rate"] == 0.0
     assert all(case["top_1_correct"] for case in first["cases"])
+    assert all(
+        evaluate_rules(
+            scenario["id"],
+            parse_dt(scenario["started_at"]),
+            build_evidence_items(scenario),
+        )["version"]
+        == "rules-v2"
+        for scenario in load_json(SCENARIOS_PATH)["scenarios"]
+    )
 
 
 def test_rules_references_are_fixture_evidence_ids():

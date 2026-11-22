@@ -422,7 +422,7 @@ def create_live_investigation(
     request_id: str,
     subject_hash: str,
     idempotency_key: str,
-) -> InvestigationReport:
+) -> tuple[InvestigationReport, bool]:
     if evidence_window_minutes > settings.max_evidence_window_minutes:
         raise ApiError(
             422,
@@ -470,7 +470,7 @@ def create_live_investigation(
                 "This investigation is already running.",
                 retryable=True,
             )
-        return report_for_investigation(db, existing, request_id)
+        return report_for_investigation(db, existing, request_id), True
 
     incident = db.get(Incident, incident_id)
     if incident is None:
@@ -596,7 +596,7 @@ def create_live_investigation(
             )
         )
     db.commit()
-    return report_for_investigation(db, run, request_id)
+    return report_for_investigation(db, run, request_id), False
 
 
 def get_investigation(db: Session, investigation_id: str, request_id: str) -> InvestigationReport:

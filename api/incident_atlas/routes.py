@@ -466,7 +466,7 @@ def run_investigation(
     except ValueError:
         raise ApiError(400, "invalid_idempotency_key", "Idempotency-Key must be a UUID.") from None
     actor = enforce_rate_limit(db, settings, _client_host(request), "live")
-    report = create_live_investigation(
+    report, reused = create_live_investigation(
         db=db,
         settings=settings,
         incident_id=body.incident_id,
@@ -475,7 +475,7 @@ def run_investigation(
         subject_hash=actor,
         idempotency_key=str(parsed_key),
     )
-    if report.request_id != _request_id(request):
+    if reused:
         response.status_code = 200
     return report
 
@@ -518,7 +518,7 @@ def _create_approval(
 
     prior_query = select(AuditEvent).where(
         AuditEvent.entity_type == "simulation_approval",
-        AuditEvent.entity_id == f"{source}:{result_id}:{body.mitigation_id}",
+        AuditEvent.entity_id == f"{source}:{result_id}:{body.mitigation_id}:{actor}",
     )
     prior = db.scalar(prior_query)
     if prior:
@@ -548,7 +548,7 @@ def _create_approval(
             occurred_at=now,
             action="simulation_approved",
             entity_type="simulation_approval",
-            entity_id=f"{source}:{result_id}:{body.mitigation_id}",
+            entity_id=f"{source}:{result_id}:{body.mitigation_id}:{actor}",
             request_id=_request_id(request),
             actor_hash=actor,
             attributes={"simulation_only": True, "external_action_performed": False},

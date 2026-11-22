@@ -65,7 +65,7 @@ Join table `incident_id`, `service_id`, `role` (`affected`, `dependency`, `upstr
 
 ### `simulation_approvals`
 
-`id`; nullable `investigation_id`; nullable `replay_report_id`; `hypothesis_id`; `mitigation_id`; `status` fixed to `simulated_approved`; `simulation_only` fixed true; `external_action_performed` fixed false; `recorded_at`; optional opaque `visitor_session_hash`; `request_id`. A check constraint requires exactly one of `investigation_id` or `replay_report_id`. A unique constraint on the selected result and `mitigation_id` prevents duplicate approvals. It is append-only and has no downstream action consumer.
+`id`; nullable `investigation_id`; nullable `replay_report_id`; `hypothesis_id`; `mitigation_id`; `status` fixed to `simulated_approved`; `simulation_only` fixed true; `external_action_performed` fixed false; `recorded_at`; an HMAC-derived `visitor_session_hash`; and `request_id`. A check constraint requires exactly one of `investigation_id` or `replay_report_id`. A unique constraint on the selected result, `mitigation_id`, and visitor hash prevents duplicate submissions from one source while allowing another anonymous visitor to record the same simulation. A database trigger rejects updates and deletes. The row has no downstream action consumer.
 
 ### `evaluation.labels`
 
@@ -73,7 +73,7 @@ Join table `incident_id`, `service_id`, `role` (`affected`, `dependency`, `upstr
 
 ### `audit_events` and `guest_rate_events`
 
-`audit_events` records replay access, investigation lifecycle, and simulation approvals without storing raw sensitive input. `guest_rate_events` stores only HMAC-derived visitor hashes, action, and timestamp for anonymous rate accounting.
+`audit_events` records replay access, investigation lifecycle, and simulation approvals without storing raw sensitive input. `guest_rate_events` stores only HMAC-derived source hashes, action, and timestamp for anonymous rate accounting. Expired rate rows are deleted before a rate check, retaining at most the longest configured live/approval window (currently no more than 24 hours) while rate limits remain enabled.
 
 ## Relationships
 

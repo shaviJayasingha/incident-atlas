@@ -359,9 +359,17 @@ class SimulationApproval(Base):
             name="ck_approval_no_external_action",
         ),
         UniqueConstraint(
-            "investigation_id", "mitigation_id", name="uq_investigation_mitigation_approval"
+            "investigation_id",
+            "mitigation_id",
+            "visitor_session_hash",
+            name="uq_investigation_mitigation_approval",
         ),
-        UniqueConstraint("replay_report_id", "mitigation_id", name="uq_replay_mitigation_approval"),
+        UniqueConstraint(
+            "replay_report_id",
+            "mitigation_id",
+            "visitor_session_hash",
+            name="uq_replay_mitigation_approval",
+        ),
     )
 
 
@@ -392,6 +400,7 @@ class GuestRateEvent(Base):
 
     __table_args__ = (
         Index("ix_guest_rate_subject_action_time", "subject_hash", "action", "occurred_at"),
+        Index("ix_guest_rate_occurred_at", "occurred_at"),
     )
 
 

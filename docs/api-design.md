@@ -71,7 +71,7 @@ All telemetry responses include `evidence_id`, `kind`, `service_id`, `observed_a
   "completed_at": "2026-11-22T14:00:04Z",
   "model_id": "configured-model-id",
   "prompt_version": "incident-atlas-investigator-v1",
-  "schema_version": "investigation-report-v1",
+  "schema_version": "investigation-report-v2",
   "evidence_snapshot_id": "evs_01J...",
   "evidence_snapshot_sha256": "f5c6...",
   "uncertainty": "The timing and service signals support this explanation, but the fixture does not show a direct configuration diff.",
@@ -93,7 +93,7 @@ All telemetry responses include `evidence_id`, `kind`, `service_id`, `observed_a
     }
   ],
   "rules_baseline": {
-    "version": "rules-v1",
+    "version": "rules-v2",
     "ranked_labels": ["cache_miss_after_release_signal"],
     "fired_rules": [{
       "rule_id": "cache-miss-after-deploy",

@@ -37,6 +37,8 @@ Step 1's blueprint is documented above. Step 2 adds the FastAPI/PostgreSQL backe
 
 Step 5 publishes the project source to [GitHub](https://github.com/shaviJayasingha/incident-atlas), adds a PostgreSQL-backed CI workflow, API Docker image, local Compose setup, and Netlify/Render deployment configuration. The hosted CI runner has passed the PostgreSQL 17 migrations, repeated seeding and fixture hashes, all backend tests, frontend checks, Ruff, and API image build. The deployed API/database, genuine live model request, and deployed browser walkthrough remain unverified until the hosting and model services are provisioned and exercised. See [Step 5 handoff](docs/step5-handoff.md) for exact results and blockers.
 
+Step 6 adds focused security and concurrency checks, visitor-scoped append-only approvals, wall-clock provider timeouts, expired rate-event cleanup, a nine-case rules evaluation set, dependency audits, and a local PostgreSQL-backed Playwright journey in CI. See [Step 6 report](docs/step6-report.md) for findings, commit SHA, exact commands and the remaining deployment, database-role, and live-provider gates.
+
 ## Web preview (Steps 3–4)
 
 The normal visitor mode reads the FastAPI API and requires no sign-in or visitor model API key. It uses the Vite `/api` proxy locally, and the deployed build takes its API origin from `VITE_API_BASE_URL`. Live analysis is shown only when the backend capability endpoint enables it. Development fixture preview is separate and opt-in.

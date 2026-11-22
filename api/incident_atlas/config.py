@@ -1,5 +1,6 @@
 import json
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -54,7 +55,11 @@ class Settings(BaseSettings):
     @field_validator("openai_base_url")
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
-        return value.rstrip("/")
+        normalized = value.rstrip("/")
+        parsed = urlsplit(normalized)
+        if not parsed.scheme or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("OPENAI_BASE_URL must be an absolute URL without embedded credentials")
+        return normalized
 
     @model_validator(mode="after")
     def production_secrets_are_safe(self) -> "Settings":
@@ -66,6 +71,23 @@ class Settings(BaseSettings):
                 raise ValueError("RATE_LIMIT_HMAC_KEY must be set outside development")
             if "localhost" in self.database_url or "127.0.0.1" in self.database_url:
                 raise ValueError("DATABASE_URL must point to a production database")
+            if urlsplit(self.openai_base_url).scheme.lower() != "https":
+                raise ValueError("OPENAI_BASE_URL must be an HTTPS URL in production")
+            if not self.cors_allowed_origins:
+                raise ValueError("CORS_ALLOWED_ORIGINS must include the public HTTPS site origin")
+            for origin in self.cors_allowed_origins:
+                parsed_origin = urlsplit(origin)
+                if (
+                    origin == "*"
+                    or parsed_origin.scheme.lower() != "https"
+                    or not parsed_origin.hostname
+                    or parsed_origin.username
+                    or parsed_origin.password
+                    or parsed_origin.path not in {"", "/"}
+                    or parsed_origin.query
+                    or parsed_origin.fragment
+                ):
+                    raise ValueError("CORS_ALLOWED_ORIGINS must contain exact HTTPS origins")
         return self
 
     @property

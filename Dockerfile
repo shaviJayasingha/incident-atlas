@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app/api
 
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.13.9
 COPY api/pyproject.toml api/uv.lock api/README.md ./
 COPY api/incident_atlas ./incident_atlas
 COPY api/migrations ./migrations

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from incident_atlas.errors import ApiError, ProviderInvalidOutput
@@ -32,7 +34,14 @@ def test_valid_hypothesis_citation_must_resolve_in_snapshot():
 
 def test_hypothesis_must_cite_evidence_and_cannot_duplicate_citations():
     with pytest.raises(ProviderInvalidOutput, match="at least one evidence item"):
-        _validate_evidence_references(_draft([]), {"ev-known"})
+        _validate_evidence_references(
+            SimpleNamespace(
+                hypotheses=[
+                    SimpleNamespace(supporting_evidence_ids=[], contradicting_evidence_ids=[])
+                ]
+            ),
+            {"ev-known"},
+        )
 
     duplicated = _draft(["ev-known"])
     duplicated.hypotheses[0].contradicting_evidence_ids = ["ev-known"]

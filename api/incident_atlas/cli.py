@@ -4,7 +4,7 @@ import json
 from sqlalchemy import select
 
 from incident_atlas.db import SessionLocal
-from incident_atlas.evaluation import evaluate_fixture_dataset
+from incident_atlas.evaluation import evaluate_expanded_dataset, evaluate_fixture_dataset
 from incident_atlas.fixtures import fixture_manifest, seed_evaluation, seed_runtime
 from incident_atlas.models import EvidenceSnapshot, Incident, SnapshotEvidence
 from incident_atlas.rules import evaluate_rules
@@ -58,11 +58,15 @@ def main() -> None:
             "fixture-manifest",
             "rules-baseline",
             "evaluate-fixtures",
+            "evaluate-expanded",
         ],
     )
     args = parser.parse_args()
     if args.command == "evaluate-fixtures":
         print(json.dumps(evaluate_fixture_dataset(), indent=2, sort_keys=True))
+        return
+    if args.command == "evaluate-expanded":
+        print(json.dumps(evaluate_expanded_dataset(), indent=2, sort_keys=True))
         return
     with SessionLocal() as db:
         if args.command == "seed-runtime":

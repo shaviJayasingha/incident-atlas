@@ -3,7 +3,7 @@ import hmac
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from incident_atlas.config import Settings
@@ -45,6 +45,11 @@ def enforce_rate_limit(
         maximum = settings.rate_approvals
         window = settings.rate_approval_window_seconds
     cutoff = datetime.now(UTC) - timedelta(seconds=window)
+    retention_cutoff = datetime.now(UTC) - timedelta(
+        seconds=max(settings.rate_live_window_seconds, settings.rate_approval_window_seconds)
+    )
+    db.execute(delete(GuestRateEvent).where(GuestRateEvent.occurred_at < retention_cutoff))
+    db.commit()
 
     # Serialize a source/action pair across API workers without retaining a raw IP address.
     advisory_key = f"{subject}:{action}"

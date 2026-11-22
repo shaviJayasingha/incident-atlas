@@ -38,9 +38,10 @@ Run the offline baseline evaluator directly from versioned fixtures and labels:
 
 ```bash
 uv run python -m incident_atlas.cli evaluate-fixtures
+uv run python -m incident_atlas.cli evaluate-expanded
 ```
 
-The evaluator is not imported by the API request or live model path. Its `expected_primary_label` output is for local evaluation only; public rules signals use separate names.
+The offline evaluators are not imported by the API request or live model path. Their `expected_primary_label` values are for evaluation only; public rules signals use separate names. The expanded set contains the three base cases, three deterministic positive variants, and three expected-abstention cases.
 
 ## Run the API
 
