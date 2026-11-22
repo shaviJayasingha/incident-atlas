@@ -1,6 +1,6 @@
 # Step 5 handoff — completion and verification status
 
-**Status:** Source and launch configuration prepared and published. Production deployment, provider-backed live AI, and deployed browser walkthrough remain unverified.  
+**Status:** Full source is public on GitHub. PostgreSQL-backed CI, repeatable seeding, all backend tests, frontend checks, and the API container build pass. Production deployment, provider-backed live AI, and deployed browser walkthrough remain blocked and unverified.
 **Reviewed:** 2026-11-22
 
 ## Preflight findings
@@ -13,11 +13,12 @@ The full inventory is in [`step5-preflight.md`](step5-preflight.md).
 
 - Added a non-root FastAPI container image at [`Dockerfile`](../Dockerfile). It runs the Alembic migration and idempotent runtime fixture seed before serving, reads Render's injected `PORT`, and probes database readiness at `/readyz`.
 - Added [`compose.yaml`](../compose.yaml) for PostgreSQL 17, the API, and Vite. The API and web wait for dependency health. Live AI is off by default and credentials remain API-only.
-- Added [`ci.yml`](../.github/workflows/ci.yml). Its PostgreSQL service job migrates, seeds twice, compares manifests, runs the full backend suite and Ruff. Its frontend job runs tests, typecheck, and production build.
+- Added [`ci.yml`](../.github/workflows/ci.yml). Its PostgreSQL service job migrates, seeds twice, compares manifests, runs the full backend suite and Ruff; a dependent job builds the API container. Its frontend job runs tests, typecheck, and production build.
 - Added [`netlify.toml`](../netlify.toml) for a static Vite build and client route fallback, plus [`render.yaml`](../render.yaml) for the API container and managed PostgreSQL.
 - Made the Vite API proxy target configurable for Compose while retaining `127.0.0.1:8000` as the local default.
 - Documented that the public dataset is authored deterministic synthetic OpenTelemetry-shaped data, not imported from OpenTelemetry Demo. The source JSON, loader, fixture version, seeds, and hashes define the reproducible generation path. Ground-truth labels remain separate.
-- Created the public GitHub repository [`shaviJayasingha/incident-atlas`](https://github.com/shaviJayasingha/incident-atlas). The original checkout's `.git` directory remains read-only; local repository metadata now lives in the writable `.git-step5` directory and is used with `git --git-dir="$PWD/.git-step5" --work-tree="$PWD"`.
+- Created and verified the public GitHub repository [`shaviJayasingha/incident-atlas`](https://github.com/shaviJayasingha/incident-atlas); the full source tree is on `main`. The original checkout's `.git` directory remains read-only; local repository metadata now lives in the writable `.git-step5` directory and is used with `git --git-dir="$PWD/.git-step5" --work-tree="$PWD"`.
+- Fixed two real contract/test failures found by the PostgreSQL CI runs: the API's rules response now includes each fired rule label, and invalid live output is checked against the seeded hypothesis count rather than assuming only one replay hypothesis exists.
 
 ## Commands run and observed results
 
@@ -30,9 +31,27 @@ The full inventory is in [`step5-preflight.md`](step5-preflight.md).
 | `cd web && npm run typecheck` | Passed. |
 | `cd web && npm run build` | Passed with Vite 8.3.8. |
 | `docker compose up --build` | Not run: Docker and Podman are not installed. |
-| PostgreSQL migrations + repeated seed + all nine database tests | Not run against PostgreSQL in this runner. The new GitHub Actions workflow is configured to execute them; its run must be checked before accepting this gate. |
+| `uv run alembic upgrade head` in GitHub Actions, with PostgreSQL 17 | Passed on the hosted GitHub runner. |
+| `uv run python -m incident_atlas.cli seed-runtime` twice, plus two `fixture-manifest` runs and `diff -u` for both outputs | Passed on the hosted PostgreSQL 17 runner; both seed outputs and both manifests matched byte-for-byte. |
+| `uv run pytest -q -rs` on the hosted PostgreSQL 17 runner | Passed: all 27 tests reached 100%, including all nine PostgreSQL integration tests, with no skips. The test suite used the real FastAPI app and PostgreSQL service. |
+| `uv run ruff check .` on the hosted PostgreSQL 17 runner | Passed: `All checks passed!` |
+| `docker build -f Dockerfile -t incident-atlas-api:ci .` | Passed on the hosted GitHub runner. This verifies the API image build; it is not a production deployment. |
 
-The test output includes a Starlette deprecation warning for `httpx` with `TestClient`; it did not fail the suite.
+The PostgreSQL suite emitted a Starlette deprecation warning for using `httpx` with `TestClient`; it did not fail the suite.
+
+### PostgreSQL run record
+
+GitHub Actions run [#4](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45055077841) for commit `3a0fabacdc0247b53e6cf587cc93c7a428ca01e6` completed successfully. All three jobs passed: `backend-postgres`, `frontend`, and `container`. The database job ran migrations, seed-twice comparisons, fixture manifest comparisons, the complete 27-test suite, and Ruff against the PostgreSQL 17 service. The frontend job passed `npm test` (7/7), `npm run typecheck`, and `npm run build`.
+
+The actual verified fixture manifest from that run had hash `918505f67592c5b482c1d008d51bc642aca0cdfaf79b74edf27975f11ef868c3` and recorded:
+
+| Incident | Evidence rows | Scenario SHA-256 | Immutable snapshot SHA-256 |
+|---|---:|---|---|
+| `inc-cache-collapse-001` | 71 | `428325f2a1185cdec21e0b84a6fa4a96e3660b9f5f9f38ed831aeda48e6f6bc4` | `7d09c04c3856d9fcc5e1c9b1a07581bbe5447e162d85dca700c7aa139d55d15d` |
+| `inc-inventory-pool-002` | 71 | `a49a23b5310ac87954df2fd43d97c7818c1d2f1c25d9445e46936252bc780252` | `7ee8b70c152ea0e654758c62c7146b7b0df646f6c9c8cd0a717b59e5bd13f75d` |
+| `inc-payment-gateway-003` | 87 | `244cf1449c76dea0ba474ff635c6f5a8dbbe0cad9bdc7a9b854aab2740f6ffd2` | `a15f0a87598bd002d7123600578911f98e84087d3eca35e6be4cb0256ab92ed6` |
+
+These are the runner's observed outputs, not values inferred from generated migration SQL.
 
 ## Dataset and evaluation provenance
 
@@ -46,7 +65,7 @@ Observed raw file SHA-256 values:
 | `data/incidents/replays.json` (Step 5 contract-aligned source) | `438c73cd36dcbe214cc3669d19188c5e63a266822090f9da5b8c263af75a46b5` |
 | `data/evaluation/labels.json` | `a50413a43dce171cf80d6a9a1c5e1845b0db078a2f22c19d718c2d8ef0164e63` |
 
-The evaluator's canonical labels dataset hash is `8dd1412c520acda5eb90d4e8f5b7ebd861e616967b1d0bc2897c19ccf142cdca`. Existing per-snapshot evidence hashes and evidence counts are recorded in [`backend-handoff.md`](backend-handoff.md); Step 5 has not regenerated them against a PostgreSQL server.
+The evaluator's canonical labels dataset hash is `8dd1412c520acda5eb90d4e8f5b7ebd861e616967b1d0bc2897c19ccf142cdca`. The hosted PostgreSQL seed run reproduced the fixture scenario and immutable snapshot hashes in the table above.
 
 ## Hosting limits checked before launch
 
@@ -61,12 +80,13 @@ The connected Netlify and Supabase accounts showed unrelated portfolio resources
 
 | Gate | State | Exact next action |
 |---|---|---|
-| GitHub publication | Repository created; final source publication and Actions result must be verified. | Confirm `main` contains the full tree and check the CI run on the pushed commit. |
-| PostgreSQL integration | Unverified here. | Wait for GitHub CI to migrate its PostgreSQL 17 service, seed twice with matching output, and pass every test without skips. If the workflow is not enabled, run the commands in `backend-handoff.md` from a PostgreSQL-enabled runner. |
-| Public Netlify/Render deployment | Not provisioned. | Provision project-specific resources after accepting the recurring Render plan charge; set CORS and public API URL, deploy the same tested Git SHA, then verify both health endpoints. |
-| No-key real API/database journey | Not run. | From the deployed site, complete incident → telemetry → stored replay → all evidence citations → acknowledged approval; read back persisted `simulation_only=true` and `external_action_performed=false`. |
-| Live AI | Not run; no server-side provider secret is available. | Configure `OPENAI_API_KEY` only in the API host, enable live analysis explicitly, then verify a valid structured report, snapshot citations, model/prompt/schema provenance, usage, and timeout/refusal/invalid-output states. Keep replay enabled if live AI remains off. |
-| Desktop/mobile deployed browser walkthrough | Not run. No public API/web deployment exists yet. | Test deployed loading, unavailable API, replay, live-off/live-on, evidence navigation, and simulated approval on desktop and mobile. |
-| Docker Compose runtime | Not run in this runner. | Execute `docker compose up --build` on a Docker-capable host and complete the local no-key flow. |
+| GitHub publication | **Passed.** Public repository contains the project source and CI configuration. The verified source commit is [3a0fabac](https://github.com/shaviJayasingha/incident-atlas/commit/3a0fabacdc0247b53e6cf587cc93c7a428ca01e6); the handoff update is published after this tested change. | No blocker for source access. |
+| PostgreSQL integration | **Passed in GitHub Actions.** PostgreSQL 17 migration, repeat seed/hash checks, all 27 tests (including the nine formerly skipped tests), Ruff, and frontend checks passed. | The CI database is ephemeral; this does not verify a production database. |
+| API container build | **Passed in GitHub Actions.** | Production image deployment and runtime health checks remain unverified. |
+| Public Netlify/Render deployment | **Blocked before provisioning.** No Render account/deployment connector is connected. The Netlify account is connected but contains the unrelated portfolio site, which was not reused. The durable Render plan is approximately $13/month at the prices checked, before storage, transfer, and tax; no price authorization was provided. | Approve the recurring hosting budget and provide/connect the Render account. Then provision the new services, configure exact CORS and frontend API origin, and deploy the tested source. |
+| No-key API/database journey | **Backend integration path passed in CI** using the real API routes and PostgreSQL: catalogue/detail, telemetry, stored replay isolation, evidence resolution, and persisted simulation approvals are covered. The end-to-end browser journey on a public deployment is **not verified** because no services are deployed. | After deployment, complete the same journey in the browser and read back the persisted `simulation_only=true` and `external_action_performed=false` approval. |
+| Live AI | **Unverified.** CI uses mocked provider outputs to cover structured validation, provenance, evidence references, timeout/refusal/invalid output. No genuine live model request was made because no server-side `OPENAI_API_KEY` is available. | Add the model secret only in the API host, enable live analysis explicitly, and run a real provider request. Keep the no-key stored replay path available. |
+| Desktop/mobile deployed browser walkthrough | **Unverified.** No deployed website or API URL exists. | After deployment, test loading, API unavailable, replay/live availability, evidence navigation, and simulated approval at desktop and mobile widths. |
+| Docker Compose runtime | **Unverified.** Docker and Podman are unavailable in this runner; only the API Docker image build passed in CI. | Run `docker compose up --build` on a Docker-capable host and complete the local no-key flow. |
 
-No public Incident Atlas website or API URL is claimed at this handoff. No live model request, hosted migration, persisted approval, or deployed browser walkthrough is claimed as successful.
+No public Incident Atlas website or API URL is claimed at this handoff. No genuine live model request, production-hosted migration, production approval, or deployed browser walkthrough is claimed as successful. The remaining external launch blockers are the approved recurring hosting spend/account and a server-side model key for live-AI verification.
