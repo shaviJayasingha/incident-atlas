@@ -92,7 +92,7 @@ jobs:
             "from pathlib import Path; assert not Path('/app/data/evaluation').exists(); assert not Path('/app/data/evaluation/labels.json').exists()"
       - name: Migrate and seed with production-shaped Render URLs
         run: |
-          host_ip="$(ip route get 1.1.1.1 | awk '{for (i = 1; i <= NF; i++) if ($i == \"src\") {print $(i + 1); exit}}')"
+          host_ip="$(ip route get 1.1.1.1 | python -c 'import sys; t=sys.stdin.read().split(); print(t[t.index("src") + 1])')"
           test -n "$host_ip"
           docker run --rm --network host \
             -e ENVIRONMENT=production \
@@ -108,7 +108,7 @@ jobs:
             incident-atlas-api:ci uv run --no-sync python -m incident_atlas.cli deploy-bootstrap
       - name: Start API with limited runtime credentials
         run: |
-          host_ip="$(ip route get 1.1.1.1 | awk '{for (i = 1; i <= NF; i++) if ($i == \"src\") {print $(i + 1); exit}}')"
+          host_ip="$(ip route get 1.1.1.1 | python -c 'import sys; t=sys.stdin.read().split(); print(t[t.index("src") + 1])')"
           test -n "$host_ip"
           docker run -d --name incident-atlas-api-ci --network host \
             -e ENVIRONMENT=production \

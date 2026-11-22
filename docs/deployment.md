@@ -1,6 +1,6 @@
 # Deployment plan
 
-**Target architecture:** GitHub → Netlify static site + Render FastAPI/PostgreSQL.  
+**Target architecture:** GitHub → Netlify static site + Render FastAPI/PostgreSQL.
 **Current state:** configuration and CI checks are prepared; no public Incident Atlas services have been provisioned. See the [pre-deployment release report](predeployment-release-report.md) for the exact open gates.
 
 ## Local Docker Compose
