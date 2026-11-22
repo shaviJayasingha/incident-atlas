@@ -4,6 +4,8 @@
 **Audited GitHub `main` before changes:** [`e1c1f64cfbc39de602d9d0ac9736a041ed899159`](https://github.com/shaviJayasingha/incident-atlas/commit/e1c1f64cfbc39de602d9d0ac9736a041ed899159)  
 **Step 6 code-under-test commit:** [`d3cdc86cb7b86f5c190a25277e0886b044ceb73b`](https://github.com/shaviJayasingha/incident-atlas/commit/d3cdc86cb7b86f5c190a25277e0886b044ceb73b)
 
+This is the Step 6 snapshot. Later release hardening changes and the current deployment gates are recorded in [predeployment-release-report.md](predeployment-release-report.md); use that report for the current implementation state.
+
 **Hosted CI:** [Run 10 — all jobs passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45063045683)
 
 ## Findings and fixes

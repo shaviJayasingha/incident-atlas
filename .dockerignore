@@ -12,3 +12,7 @@
 **/*.py[cod]
 **/.coverage
 .postgres-data
+data/evaluation/
+**/labels.json
+**/*answer-key*
+**/*answer_key*

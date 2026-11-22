@@ -33,6 +33,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      bootstrap:
+        condition: service_completed_successfully
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["uv", "run", "python", "-m", "incident_atlas.cli", "bootstrap-runtime"]
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+psycopg://incident_atlas:incident_atlas_local_only@db:5432/incident_atlas
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
   web:
     image: node:22-alpine

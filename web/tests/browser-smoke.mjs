@@ -1,8 +1,20 @@
 import assert from 'node:assert/strict'
+import { mkdir } from 'node:fs/promises'
+import path from 'node:path'
 import { chromium } from 'playwright'
 
 const baseUrl = process.env.INCIDENT_ATLAS_WEB_URL ?? 'http://127.0.0.1:5173'
-const browser = await chromium.launch({ headless: true })
+const screenshotDir = process.env.SCREENSHOT_DIR
+if (screenshotDir) await mkdir(screenshotDir, { recursive: true })
+const capture = async (page, name) => {
+  if (screenshotDir) {
+    await page.screenshot({ path: path.join(screenshotDir, name), fullPage: true, animations: 'disabled' })
+  }
+}
+const browser = await chromium.launch({
+  headless: true,
+  executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+})
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
   const pageErrors = []
@@ -10,14 +22,17 @@ try {
 
   await page.goto(baseUrl)
   await page.getByRole('heading', { name: /Follow the evidence/ }).waitFor()
+  await capture(page, '01-dashboard-desktop.png')
   await page.getByRole('link', { name: /Explore incidents/ }).click()
   await page.getByRole('heading', { name: 'Choose an incident' }).waitFor()
   await page.getByRole('link', { name: /Catalog latency after cache key change/ }).click()
   await page.getByRole('heading', { name: 'Incident timeline' }).waitFor()
   await page.getByRole('heading', { name: 'Telemetry explorer' }).waitFor()
+  await capture(page, '02-incident-detail-desktop.png')
   await page.getByRole('button', { name: 'View stored replay' }).click()
   await page.getByText('PROVENANCE · STORED REPLAY').waitFor()
   assert.equal(await page.locator('.report-banner-stamp strong').innerText(), 'NO')
+  await capture(page, '03-stored-replay-desktop.png')
   await page.getByRole('link', { name: /ev-deploy-catalog-042/ }).click()
   await page.waitForURL(/evidence=ev-deploy-catalog-042/)
   await page.getByText('ev-deploy-catalog-042', { exact: true }).first().waitFor()
@@ -31,10 +46,12 @@ try {
   await approvalResult.locator('.eyebrow').filter({ hasText: 'SIMULATION RECORDED' }).waitFor()
   await approvalResult.getByText(/simulation_only=true/).first().waitFor()
   await approvalResult.getByText(/external_action_performed=false/).first().waitFor()
+  await capture(page, '04-simulated-approval-desktop.png')
 
   const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } })
   await mobilePage.goto(baseUrl)
   await mobilePage.getByRole('heading', { name: /Follow the evidence/ }).waitFor()
+  await capture(mobilePage, '05-dashboard-mobile.png')
   const mobileOverflow = await mobilePage.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   )

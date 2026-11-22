@@ -29,8 +29,9 @@ jobs:
       run:
         working-directory: api
     env:
-      TEST_DATABASE_URL: postgresql+psycopg://incident_atlas:incident_atlas@localhost:5432/incident_atlas_test
-      DATABASE_URL: postgresql+psycopg://incident_atlas:incident_atlas@localhost:5432/incident_atlas_test
+      # Use Render's postgresql:// shape to exercise shared psycopg normalization.
+      TEST_DATABASE_URL: postgresql://incident_atlas:incident_atlas@localhost:5432/incident_atlas_test
+      DATABASE_URL: postgresql://incident_atlas:incident_atlas@localhost:5432/incident_atlas_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -67,16 +68,116 @@ jobs:
   container:
     needs: backend-postgres
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: incident_atlas_container
+          POSTGRES_USER: incident_atlas
+          POSTGRES_PASSWORD: incident_atlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U incident_atlas -d incident_atlas_container"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - name: Build API image
         run: docker build -f Dockerfile -t incident-atlas-api:ci .
+      - name: Confirm the image omits evaluation answer keys
+        run: |
+          docker run --rm --entrypoint python incident-atlas-api:ci -c \
+            "from pathlib import Path; assert not Path('/app/data/evaluation').exists(); assert not Path('/app/data/evaluation/labels.json').exists()"
+      - name: Migrate and seed with production-shaped Render URLs
+        run: |
+          host_ip="$(ip route get 1.1.1.1 | python -c 'import sys; t=sys.stdin.read().split(); print(t[t.index("src") + 1])')"
+          test -n "$host_ip"
+          docker run --rm --network host \
+            -e ENVIRONMENT=production \
+            -e DATABASE_URL="postgresql://incident_atlas_runtime:ci-runtime-password@${host_ip}:5432/incident_atlas_container" \
+            -e MIGRATION_DATABASE_URL="postgresql://incident_atlas:incident_atlas@${host_ip}:5432/incident_atlas_container" \
+            -e RUNTIME_DB_PASSWORD=ci-runtime-password \
+            -e PUBLIC_SITE_ORIGIN=https://incident-atlas-ci.example.invalid \
+            -e CORS_ALLOWED_ORIGINS=https://incident-atlas-ci.example.invalid \
+            -e TRUSTED_PROXY_CIDRS=198.51.100.0/24 \
+            -e RATE_LIMIT_HMAC_KEY=ci-container-rate-limit-secret \
+            -e LIVE_ANALYSIS_ENABLED=false \
+            -e LIVE_PROVIDER_VERIFIED=false \
+            incident-atlas-api:ci uv run --no-sync python -m incident_atlas.cli deploy-bootstrap
+      - name: Start API with limited runtime credentials
+        run: |
+          host_ip="$(ip route get 1.1.1.1 | python -c 'import sys; t=sys.stdin.read().split(); print(t[t.index("src") + 1])')"
+          test -n "$host_ip"
+          docker run -d --name incident-atlas-api-ci --network host \
+            -e ENVIRONMENT=production \
+            -e DATABASE_URL="postgresql://incident_atlas_runtime:ci-runtime-password@${host_ip}:5432/incident_atlas_container" \
+            -e MIGRATION_DATABASE_URL="postgresql://incident_atlas:incident_atlas@${host_ip}:5432/incident_atlas_container" \
+            -e RUNTIME_DB_PASSWORD=ci-runtime-password \
+            -e PUBLIC_SITE_ORIGIN=https://incident-atlas-ci.example.invalid \
+            -e CORS_ALLOWED_ORIGINS=https://incident-atlas-ci.example.invalid \
+            -e TRUSTED_PROXY_CIDRS=198.51.100.0/24 \
+            -e RATE_LIMIT_HMAC_KEY=ci-container-rate-limit-secret \
+            -e LIVE_ANALYSIS_ENABLED=false \
+            -e LIVE_PROVIDER_VERIFIED=false \
+            incident-atlas-api:ci
+          trap 'docker logs incident-atlas-api-ci || true; docker rm -f incident-atlas-api-ci >/dev/null 2>&1 || true' EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:8000/readyz >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          docker exec incident-atlas-api-ci python -c \
+            "from pathlib import Path; env = Path('/proc/1/environ').read_bytes(); assert b'MIGRATION_DATABASE_URL=' not in env; assert b'RUNTIME_DB_PASSWORD=' not in env"
+          python - <<'PY'
+          import json
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          base = 'http://127.0.0.1:8000/api/v1'
+          with urlopen(base + '/demo-capabilities') as response:
+              assert json.load(response)['live_ai_enabled'] is False
+          with urlopen(base + '/replays/replay-cache-v1') as response:
+              report = json.load(response)
+          assert report['source'] == 'stored_replay'
+          assert report['model_call_made'] is False
+          hypothesis = report['hypotheses'][0]
+          evidence_id = hypothesis['supporting_evidence_ids'][0]
+          evidence_url = f"{base}/snapshots/{report['evidence_snapshot_id']}/evidence/{evidence_id}"
+          with urlopen(evidence_url) as response:
+              evidence = json.load(response)
+          assert evidence['evidence_id'] == evidence_id
+          payload = json.dumps({
+              'hypothesis_id': hypothesis['id'],
+              'mitigation_id': hypothesis['mitigation']['id'],
+              'simulation_acknowledged': True,
+          }).encode()
+          approval_url = base + '/replays/replay-cache-v1/mitigation-approvals'
+          request = Request(approval_url, data=payload, headers={'Content-Type': 'application/json'})
+          with urlopen(request) as response:
+              approval = json.load(response)
+          assert approval['simulation_only'] is True
+          assert approval['external_action_performed'] is False
+          duplicate = Request(approval_url, data=payload, headers={'Content-Type': 'application/json'})
+          try:
+              urlopen(duplicate)
+          except HTTPError as error:
+              assert error.code == 409
+          else:
+              raise AssertionError('the approval must persist and deduplicate')
+          print('Container runtime passed: readiness, replay, evidence, persisted simulated approval.')
+          PY
 
   frontend:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: web
+    env:
+      # Reserved .invalid URL for CI builds; never use it in a published site.
+      VITE_API_BASE_URL: https://incident-atlas-api.example.invalid/api/v1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,6 +188,12 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
+      - name: Ensure a missing production API URL fails closed
+        run: |
+          if env -u VITE_API_BASE_URL npm run verify:production-api; then
+            echo "The production URL check unexpectedly accepted an unset value."
+            exit 1
+          fi
       - run: npm run build
       - run: npm audit --audit-level=moderate
       - name: Check browser bundle for server-only credential markers
@@ -113,8 +220,8 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
-      DATABASE_URL: postgresql+psycopg://incident_atlas:incident_atlas@localhost:5432/incident_atlas_browser
-      TEST_DATABASE_URL: postgresql+psycopg://incident_atlas:incident_atlas@localhost:5432/incident_atlas_browser
+      DATABASE_URL: postgresql://incident_atlas:incident_atlas@localhost:5432/incident_atlas_browser
+      TEST_DATABASE_URL: postgresql://incident_atlas:incident_atlas@localhost:5432/incident_atlas_browser
       ENVIRONMENT: test
       RATE_LIMIT_HMAC_KEY: ci-browser-smoke-key
       LIVE_ANALYSIS_ENABLED: "false"
@@ -164,7 +271,16 @@ jobs:
           done
           test "$api_ready" = 1
           test "$web_ready" = 1
+          export SCREENSHOT_DIR="$GITHUB_WORKSPACE/web/test-artifacts"
           npm run test:e2e
+      - name: Upload screenshots from the local CI browser run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: incident-atlas-local-ci-browser-screenshots
+          path: web/test-artifacts/*.png
+          if-no-files-found: warn
+          retention-days: 14
       - name: Show local service logs on failure
         if: failure()
         run: |

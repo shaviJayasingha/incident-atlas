@@ -47,6 +47,7 @@ from incident_atlas.security import (
     fingerprint,
     idempotency_hash,
     release_live_slot,
+    reserve_global_live_budget,
 )
 
 
@@ -531,6 +532,7 @@ def create_live_investigation(
     started = time.monotonic()
     slot_acquired = False
     try:
+        reserve_global_live_budget(db, settings)
         acquire_live_slot(settings.max_live_inflight)
         slot_acquired = True
         provider_result = run_responses_inference(settings, packet)

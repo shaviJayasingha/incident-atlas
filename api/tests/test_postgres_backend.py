@@ -14,6 +14,7 @@ from incident_atlas.db import SessionLocal, engine
 from incident_atlas.errors import ProviderInvalidOutput, ProviderRefusal, ProviderTimeout
 from incident_atlas.fixtures import seed_evaluation, seed_runtime
 from incident_atlas.models import (
+    AuditEvent,
     EvaluationLabel,
     EvidenceSnapshot,
     GuestRateEvent,
@@ -34,7 +35,7 @@ def _live_settings() -> Settings:
         database_url=os.environ["DATABASE_URL"],
         openai_api_key="test-provider-key",
         live_analysis_enabled=True,
-        rate_limit_enabled=False,
+        rate_limit_enabled=True,
     )
 
 
@@ -110,6 +111,53 @@ def test_migration_and_repeatable_seed(clean_postgres):
         labels = seed_evaluation(db)
         assert labels["case_count"] == 3
         assert db.scalar(select(func.count()).select_from(EvaluationLabel)) == 3
+
+
+def test_runtime_role_cannot_read_evaluation_or_run_migrations(clean_postgres):
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+
+    from incident_atlas.deployment import _provision_role, apply_runtime_grants
+
+    with SessionLocal() as db:
+        seed_runtime(db)
+
+    role_name = "incident_atlas_runtime_ci"
+    with engine.begin() as connection:
+        _provision_role(connection, "ci-runtime-password", role_name)
+        apply_runtime_grants(connection, role_name)
+
+    admin_url = make_url(os.environ["DATABASE_URL"])
+    runtime_url = admin_url.set(
+        drivername="postgresql+psycopg",
+        username=role_name,
+        password="ci-runtime-password",
+    )
+    runtime_engine = create_engine(runtime_url)
+    try:
+        with runtime_engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM public.incidents")) == 3
+            assert connection.scalar(
+                text("SELECT has_schema_privilege(current_user, 'evaluation', 'USAGE')")
+            ) is False
+            assert connection.scalar(
+                text(
+                    "SELECT has_table_privilege(current_user, 'public.alembic_version', 'UPDATE')"
+                )
+            ) is False
+            assert connection.scalar(
+                text("SELECT has_schema_privilege(current_user, 'public', 'CREATE')")
+            ) is False
+            with pytest.raises(DBAPIError):
+                connection.execute(text("SELECT * FROM evaluation.labels"))
+            connection.rollback()
+            with pytest.raises(DBAPIError):
+                connection.execute(
+                    text("CREATE TABLE public.runtime_role_canary (id integer)")
+                )
+            connection.rollback()
+    finally:
+        runtime_engine.dispose()
 
 
 def test_public_api_contract_hidden_labels_and_replay_evidence(pg_client, monkeypatch):
@@ -285,7 +333,8 @@ def test_guest_live_rate_limit_returns_stable_error(pg_client):
     with SessionLocal() as db:
         events = db.scalars(select(GuestRateEvent)).all()
         assert len(events) == 1
-        assert len(events[0].subject_hash) == 64
+        assert {event.action for event in events} == {"live"}
+        assert all(len(event.subject_hash) == 64 for event in events)
 
 
 def test_rate_event_retention_cleanup_is_indexed_and_window_safe(pg_client):
@@ -319,6 +368,72 @@ def test_rate_event_retention_cleanup_is_indexed_and_window_safe(pg_client):
     )
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(GuestRateEvent)) == 1
+
+
+def test_global_live_request_cap_survives_rotating_client_addresses(pg_client, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from incident_atlas.config import Settings
+    from incident_atlas.main import app
+
+    provider_calls = []
+
+    def provider(*args, **kwargs):
+        provider_calls.append(True)
+        return _provider_result()
+
+    monkeypatch.setattr("incident_atlas.service.run_responses_inference", provider)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        environment="test",
+        database_url=os.environ["DATABASE_URL"],
+        openai_api_key="test-provider-key",
+        live_analysis_enabled=True,
+        rate_limit_enabled=True,
+        rate_live_runs=20,
+        rate_live_global_runs=1,
+        rate_live_global_window_seconds=3600,
+    )
+    body = {"incident_id": "inc-cache-collapse-001", "evidence_window_minutes": 15}
+    with (
+        TestClient(app, client=("203.0.113.10", 51234)) as first_visitor,
+        TestClient(app, client=("203.0.113.11", 51234)) as second_visitor,
+    ):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(
+                pool.map(
+                    lambda visitor: visitor.post(
+                        "/api/v1/investigations",
+                        headers={"Idempotency-Key": str(uuid.uuid4())},
+                        json=body,
+                    ),
+                    [first_visitor, second_visitor],
+                )
+            )
+
+    assert sorted(response.status_code for response in responses) == [201, 429]
+    blocked = next(response for response in responses if response.status_code == 429)
+    assert blocked.json()["code"] == "live_global_limit_reached"
+    assert len(provider_calls) == 1
+    with SessionLocal() as db:
+        global_events = db.scalars(
+            select(GuestRateEvent).where(GuestRateEvent.action == "live_global")
+        ).all()
+        assert len(global_events) == 1
+
+
+def test_public_replay_reads_do_not_append_unbounded_audit_events(pg_client):
+    with SessionLocal() as db:
+        before = db.scalar(select(func.count()).select_from(AuditEvent))
+
+    for _ in range(25):
+        by_id = pg_client.get("/api/v1/replays/replay-cache-v1")
+        by_incident = pg_client.get("/api/v1/incidents/inc-cache-collapse-001/replay")
+        assert by_id.status_code == 200
+        assert by_incident.status_code == 200
+
+    with SessionLocal() as db:
+        after = db.scalar(select(func.count()).select_from(AuditEvent))
+    assert after == before
 
 
 @pytest.mark.parametrize(
@@ -445,7 +560,8 @@ def test_replay_and_live_approvals_are_acknowledged_simulations(pg_client, monke
         assert all(
             item.simulation_only and not item.external_action_performed for item in approvals
         )
-        assert db.scalar(select(func.count()).select_from(GuestRateEvent)) == 0
+        rate_actions = db.scalars(select(GuestRateEvent.action)).all()
+        assert sorted(rate_actions) == ["approval", "live", "live_global"]
 
 
 def test_replay_approval_is_deduplicated_per_visitor(pg_client):
