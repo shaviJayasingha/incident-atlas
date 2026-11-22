@@ -523,7 +523,7 @@ def test_concurrent_live_idempotency_returns_in_progress_then_reuses(pg_client, 
         assert provider_entered.wait(timeout=5)
         concurrent = pg_client.post("/api/v1/investigations", headers=headers, json=body)
         assert concurrent.status_code == 409
-        assert concurrent.json()["error"]["code"] == "investigation_in_progress"
+        assert concurrent.json()["code"] == "investigation_in_progress"
         provider_release.set()
         first = first_future.result(timeout=10)
     repeated = pg_client.post("/api/v1/investigations", headers=headers, json=body)
