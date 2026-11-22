@@ -92,10 +92,12 @@ jobs:
             "from pathlib import Path; assert not Path('/app/data/evaluation').exists(); assert not Path('/app/data/evaluation/labels.json').exists()"
       - name: Migrate and seed with production-shaped Render URLs
         run: |
+          host_ip="$(ip route get 1.1.1.1 | awk '{for (i = 1; i <= NF; i++) if ($i == \"src\") {print $(i + 1); exit}}')"
+          test -n "$host_ip"
           docker run --rm --network host \
             -e ENVIRONMENT=production \
-            -e DATABASE_URL=postgresql://incident_atlas_runtime:ci-runtime-password@127.0.0.1:5432/incident_atlas_container \
-            -e MIGRATION_DATABASE_URL=postgresql://incident_atlas:incident_atlas@127.0.0.1:5432/incident_atlas_container \
+            -e DATABASE_URL="postgresql://incident_atlas_runtime:ci-runtime-password@${host_ip}:5432/incident_atlas_container" \
+            -e MIGRATION_DATABASE_URL="postgresql://incident_atlas:incident_atlas@${host_ip}:5432/incident_atlas_container" \
             -e RUNTIME_DB_PASSWORD=ci-runtime-password \
             -e PUBLIC_SITE_ORIGIN=https://incident-atlas-ci.example.invalid \
             -e CORS_ALLOWED_ORIGINS=https://incident-atlas-ci.example.invalid \
@@ -106,10 +108,12 @@ jobs:
             incident-atlas-api:ci uv run --no-sync python -m incident_atlas.cli deploy-bootstrap
       - name: Start API with limited runtime credentials
         run: |
+          host_ip="$(ip route get 1.1.1.1 | awk '{for (i = 1; i <= NF; i++) if ($i == \"src\") {print $(i + 1); exit}}')"
+          test -n "$host_ip"
           docker run -d --name incident-atlas-api-ci --network host \
             -e ENVIRONMENT=production \
-            -e DATABASE_URL=postgresql://incident_atlas_runtime:ci-runtime-password@127.0.0.1:5432/incident_atlas_container \
-            -e MIGRATION_DATABASE_URL=postgresql://incident_atlas:incident_atlas@127.0.0.1:5432/incident_atlas_container \
+            -e DATABASE_URL="postgresql://incident_atlas_runtime:ci-runtime-password@${host_ip}:5432/incident_atlas_container" \
+            -e MIGRATION_DATABASE_URL="postgresql://incident_atlas:incident_atlas@${host_ip}:5432/incident_atlas_container" \
             -e RUNTIME_DB_PASSWORD=ci-runtime-password \
             -e PUBLIC_SITE_ORIGIN=https://incident-atlas-ci.example.invalid \
             -e CORS_ALLOWED_ORIGINS=https://incident-atlas-ci.example.invalid \
