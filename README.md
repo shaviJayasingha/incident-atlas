@@ -35,7 +35,7 @@ infra/                Compose and hosting configuration
 
 Step 1's blueprint is documented above. Step 2 adds the FastAPI/PostgreSQL backend, migrations, deterministic synthetic fixtures and stored replays, optional live investigation, rules evaluation, and focused tests. Step 3 delivers the React/Vite visitor interface. Step 4 connects normal visitor reads and simulated approvals to the backend, with an explicitly labeled development fixture mode. See the [frontend integration handoff](docs/frontend-integration-handoff.md) for exact checks, the browser/DB gate status, and remaining defects.
 
-Step 5 adds a PostgreSQL-backed CI workflow, Docker image, local Compose setup, and Netlify/Render deployment configuration. This checkout still cannot run Docker or PostgreSQL itself; the deployed API/database, live model request, and browser walkthrough remain unverified until the external resources are provisioned and exercised. See [Step 5 handoff](docs/step5-handoff.md) for the exact state and blockers.
+Step 5 publishes the project source to [GitHub](https://github.com/shaviJayasingha/incident-atlas), adds a PostgreSQL-backed CI workflow, API Docker image, local Compose setup, and Netlify/Render deployment configuration. The hosted CI runner has passed the PostgreSQL 17 migrations, repeated seeding and fixture hashes, all backend tests, frontend checks, Ruff, and API image build. The deployed API/database, genuine live model request, and deployed browser walkthrough remain unverified until the hosting and model services are provisioned and exercised. See [Step 5 handoff](docs/step5-handoff.md) for exact results and blockers.
 
 ## Web preview (Steps 3–4)
 
