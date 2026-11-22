@@ -49,7 +49,7 @@ def migrated_postgres() -> None:
 def clean_postgres(migrated_postgres):
     from sqlalchemy import text
 
-    from incident_atlas.db import SessionLocal
+    from incident_atlas.db import engine
 
     tables = [
         "evaluation.labels",
@@ -70,7 +70,7 @@ def clean_postgres(migrated_postgres):
         "public.incidents",
         "public.services",
     ]
-    with SessionLocal.bind.begin() as connection:
+    with engine.begin() as connection:
         connection.execute(text(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE"))
 
 

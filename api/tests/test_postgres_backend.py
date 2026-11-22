@@ -7,7 +7,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 
 from incident_atlas.config import Settings, get_settings
-from incident_atlas.db import SessionLocal
+from incident_atlas.db import SessionLocal, engine
 from incident_atlas.errors import ProviderInvalidOutput, ProviderRefusal, ProviderTimeout
 from incident_atlas.fixtures import seed_evaluation, seed_runtime
 from incident_atlas.models import (
@@ -96,7 +96,7 @@ def test_migration_and_repeatable_seed(clean_postgres):
             select(SnapshotEvidence.evidence_id).where(SnapshotEvidence.snapshot_id == snapshot_id)
         )
         with pytest.raises(DBAPIError):
-            with SessionLocal.bind.begin() as connection:
+            with engine.begin() as connection:
                 connection.execute(
                     text(
                         "UPDATE snapshot_evidence SET payload = '{}' "

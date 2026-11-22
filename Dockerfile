@@ -15,7 +15,6 @@ COPY api/alembic.ini ./alembic.ini
 RUN uv sync --locked --no-dev --extra observability
 
 COPY api/docker-entrypoint.sh ./docker-entrypoint.sh
-RUN uv sync --locked --no-dev --extra observability
 
 WORKDIR /app
 COPY data ./data
