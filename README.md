@@ -10,12 +10,13 @@ Incident Atlas is a no-sign-in incident investigation demo. Visitors can inspect
 - [GitHub source repository](https://github.com/shaviJayasingha/incident-atlas)
 - [Pre-deployment release report](docs/predeployment-release-report.md)
 - [Step 6 security and evaluation report](docs/step6-report.md)
+- [License decision](docs/licensing-decision.md) — no license has been selected or added.
 
 ## Data provenance and evaluation limits
 
 The three incident scenarios and their stored replays are project-authored, deterministic synthetic data shaped like OpenTelemetry records. They are not imported from the OpenTelemetry Demo and are not real production incidents. The separate answer key is absent from the public API image and live model input.
 
-The rules baseline is measured on three base cases and nine derived regression variants, including expected-abstention cases. Those results describe this small synthetic test set only; they are not real-world incident accuracy. Provider coverage is mocked unless a report explicitly records a genuine live model request. No genuine provider run has been verified for the current release.
+The rules baseline uses three authored base cases, six derived variants, and three independent authored synthetic cases, including expected-abstention cases. Those results describe this small synthetic regression set only; they are not real-world incident accuracy. A separate OpenTelemetry Demo importer is available, but no Demo capture has been imported. Provider coverage is mocked unless a report explicitly records a genuine live model request. No genuine provider run has been verified for the current release.
 
 ## Run locally
 
@@ -42,17 +43,18 @@ cd ../web
 npm ci
 npm test
 npm run typecheck
-VITE_API_BASE_URL=https://api.example.invalid/api/v1 npm run build
+# Set INCIDENT_ATLAS_API_ORIGIN to a real public HTTPS API origin first.
+VITE_API_BASE_URL="${INCIDENT_ATLAS_API_ORIGIN%/}/api/v1" npm run build
 npm audit --audit-level=moderate
 ```
 
-The production build requires an absolute HTTPS API URL ending in `/api/v1`. The `.invalid` host above is only a safe local build-check value; it is not a deploy target. For Netlify, set `VITE_API_BASE_URL` to the actual API origin at build time. If unset or relative, the build fails instead of silently calling the static site itself.
+The production build requires an absolute HTTPS API URL ending in `/api/v1`. It rejects reserved example, test, loopback, private, and documentation-only hosts outside the explicit CI placeholder path. For Netlify, set `VITE_API_BASE_URL` to the actual Render API origin at build time. If unset or relative, the build fails instead of silently calling the static site itself. In a Git checkout, `python scripts/build_release_zip.py --output /tmp/incident-atlas-release.zip` creates and inspects a ZIP from tracked project files while excluding generated output, environments, secrets, caches, and Git metadata.
 
 ## Deployment configuration
 
-The planned architecture is Netlify for the static React/Vite site and Render for FastAPI plus PostgreSQL. The Render pre-deploy command migrates and seeds with `MIGRATION_DATABASE_URL`; the API runs with the separate `incident_atlas_runtime` role. Production requires `PUBLIC_SITE_ORIGIN` and `CORS_ALLOWED_ORIGINS` to be the same exact Netlify HTTPS origin. The runtime role cannot access evaluation data or run migrations. Public model calls have a PostgreSQL-backed global cap; `LIVE_ANALYSIS_ENABLED` remains false in the checked-in deployment template.
+The planned architecture is Netlify for the static React/Vite site and Render for FastAPI plus PostgreSQL. The Render pre-deploy command migrates and seeds with a pinned `MIGRATION_DATABASE_URL`; the API runs with the separate `incident_atlas_runtime` role. Production requires `PUBLIC_SITE_ORIGIN` and `CORS_ALLOWED_ORIGINS` to be the same exact Netlify HTTPS origin. The runtime role receives table-specific grants and cannot mutate seeded reference data, stored replays, or immutable evidence. It cannot access evaluation data or run migrations. Public model calls have a PostgreSQL-backed global cap; `LIVE_ANALYSIS_ENABLED` remains false in the checked-in deployment template.
 
-No paid resources were created. Before provisioning, approve a spending cap and connect the intended hosting account. Then configure the real Netlify API base URL and Render site/CORS origins, verify only actual trusted proxy CIDRs, deploy the API/database, and perform desktop and mobile walkthroughs against the deployed URL. See [deployment setup](docs/deployment.md) and the current [release report](docs/predeployment-release-report.md) for exact gates.
+No paid resources were created. Before provisioning, approve a spending cap and connect the intended hosting account. The [staged deployment runbook](docs/deployment.md) records how to reserve the Netlify origin first, pin the migration credential before adding the runtime credential, start the API, then build the site with the actual API origin. After deployment, run `python scripts/deployment_smoke.py --api-origin <actual-api-origin> --site-origin <actual-site-origin>` and complete desktop/mobile walkthroughs. See the current [release report](docs/predeployment-release-report.md) for verified outcomes.
 
 ## Project blueprint
 

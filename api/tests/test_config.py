@@ -3,7 +3,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
 from incident_atlas.config import Settings
-from incident_atlas.database_urls import migration_database_url, runtime_database_url
+from incident_atlas.database_urls import (
+    migration_database_url,
+    runtime_database_url,
+    validate_runtime_credentials,
+)
 
 
 def test_cors_origins_accept_json_and_comma_separated_environment_values(monkeypatch):
@@ -40,6 +44,21 @@ def test_render_postgres_urls_use_psycopg_for_api_and_alembic():
     finally:
         app_engine.dispose()
         migration_engine.dispose()
+
+
+def test_render_runtime_password_is_compared_after_url_decoding():
+    runtime = "postgresql://incident_atlas_runtime:p%40ss%3Aword%2F%23@db.internal:5432/incident_atlas"
+    migration = "postgresql://owner:migration-pass@db.internal:5432/incident_atlas"
+    validate_runtime_credentials(runtime, migration, "p@ss:word/#")
+
+
+def test_runtime_credential_mismatch_errors_do_not_expose_secrets():
+    runtime = "postgresql://incident_atlas_runtime:top-secret@db.internal:5432/incident_atlas"
+    migration = "postgresql://owner:migration-secret@db.internal:5432/incident_atlas"
+    with pytest.raises(ValueError) as error:
+        validate_runtime_credentials(runtime, migration, "different-secret")
+    assert "top-secret" not in str(error.value)
+    assert "migration-secret" not in str(error.value)
 
 
 def test_production_live_ai_requires_manual_provider_and_proxy_verification():

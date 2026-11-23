@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
-RULES_VERSION = "rules-v2"
+RULES_VERSION = "rules-v3"
 
 
 def _metric_groups(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -254,6 +254,75 @@ def evaluate_rules(
                 "rule_id": "slow-downstream-with-retries",
                 "label": "downstream_gateway_latency_signal",
                 "evidence_ids": evidence_ids,
+            }
+        )
+
+    queue_lag = metrics.get("fraud.kafka.consumer_lag", [])
+    produced_rate = metrics.get("fraud.kafka.records_produced_rate", [])
+    consumed_rate = metrics.get("fraud.kafka.records_consumed_rate", [])
+    lag_before = _max(_before(queue_lag, incident_start))
+    lag_peak = _max(_during(queue_lag, incident_start))
+    producer_peak = _max(_during(produced_rate, incident_start))
+    consumer_before = _max(_before(consumed_rate, incident_start))
+    consumer_floor = _min(_during(consumed_rate, incident_start))
+    consumer_base = _mean(_before(consumed_rate, incident_start))
+    if (
+        lag_peak
+        and lag_before
+        and producer_peak
+        and consumer_before
+        and consumer_floor
+        and consumer_base
+        and float(lag_peak["payload"]["value"])
+        >= max(500, float(lag_before["payload"]["value"]) * 5)
+        and float(producer_peak["payload"]["value"])
+        >= float(consumer_floor["payload"]["value"]) * 2
+        and float(consumer_floor["payload"]["value"]) <= consumer_base * 0.5
+    ):
+        fired.append(
+            {
+                "rule_id": "queue-consumer-lag-with-throughput-gap",
+                "label": "fraud_consumer_lag_signal",
+                "evidence_ids": _unique_evidence_ids(
+                    lag_before["evidence_id"] if lag_before else None,
+                    lag_peak["evidence_id"],
+                    producer_peak["evidence_id"],
+                    consumer_before["evidence_id"],
+                    consumer_floor["evidence_id"],
+                ),
+            }
+        )
+
+    throttled = metrics.get("checkout.container.cpu.throttled_ratio", [])
+    checkout_latency = metrics.get("checkout.http.server.duration.p95", [])
+    throttled_before = _max(_before(throttled, incident_start))
+    throttled_peak = _max(_during(throttled, incident_start))
+    checkout_latency_before = _mean(_before(checkout_latency, incident_start))
+    checkout_latency_peak = _max(_during(checkout_latency, incident_start))
+    checkout_latency_base = _max(_before(checkout_latency, incident_start))
+    if (
+        throttled_peak
+        and throttled_before
+        and checkout_latency_peak
+        and checkout_latency_base
+        and checkout_latency_before
+        and float(throttled_peak["payload"]["value"]) >= 0.5
+        and float(throttled_peak["payload"]["value"])
+        - float(throttled_before["payload"]["value"])
+        >= 0.3
+        and float(checkout_latency_peak["payload"]["value"])
+        >= checkout_latency_before * 3
+    ):
+        fired.append(
+            {
+                "rule_id": "checkout-cpu-throttling-with-latency-rise",
+                "label": "checkout_cpu_throttling_signal",
+                "evidence_ids": _unique_evidence_ids(
+                    throttled_before["evidence_id"] if throttled_before else None,
+                    throttled_peak["evidence_id"],
+                    checkout_latency_base["evidence_id"],
+                    checkout_latency_peak["evidence_id"],
+                ),
             }
         )
 

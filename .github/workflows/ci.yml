@@ -178,6 +178,7 @@ jobs:
     env:
       # Reserved .invalid URL for CI builds; never use it in a published site.
       VITE_API_BASE_URL: https://incident-atlas-api.example.invalid/api/v1
+      INCIDENT_ATLAS_CI: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -192,6 +193,12 @@ jobs:
         run: |
           if env -u VITE_API_BASE_URL npm run verify:production-api; then
             echo "The production URL check unexpectedly accepted an unset value."
+            exit 1
+          fi
+      - name: Ensure reserved API hostnames fail outside the explicit CI path
+        run: |
+          if env -u INCIDENT_ATLAS_CI VITE_API_BASE_URL=https://incident-atlas-api.example.invalid/api/v1 npm run verify:production-api; then
+            echo "The production URL check unexpectedly accepted a reserved hostname."
             exit 1
           fi
       - run: npm run build
@@ -286,3 +293,13 @@ jobs:
         run: |
           cat /tmp/incident-atlas-api.log || true
           cat /tmp/incident-atlas-web.log || true
+
+  release-archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and inspect tracked-file release ZIP
+        run: python scripts/build_release_zip.py --output "$RUNNER_TEMP/incident-atlas-release.zip"

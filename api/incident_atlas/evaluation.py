@@ -18,8 +18,12 @@ RULE_TO_LABEL = {
     "cache-miss-after-deploy": "cache_key_version_mismatch",
     "pool-saturation-with-stable-query": "inventory_connection_leak",
     "slow-downstream-with-retries": "upstream_payment_gateway_latency",
+    "queue-consumer-lag-with-throughput-gap": "fraud_consumer_lag",
+    "checkout-cpu-throttling-with-latency-rise": "checkout_cpu_throttling",
 }
-VARIANTS_PATH = Path(__file__).resolve().parents[2] / "data" / "evaluation" / "variants.json"
+EVALUATION_DIR = Path(__file__).resolve().parents[2] / "data" / "evaluation"
+VARIANTS_PATH = EVALUATION_DIR / "variants.json"
+INDEPENDENT_CASES_PATH = EVALUATION_DIR / "independent-cases-v1.json"
 
 
 def evaluate_fixture_dataset() -> dict[str, Any]:
@@ -54,6 +58,7 @@ def evaluate_fixture_dataset() -> dict[str, Any]:
             {
                 "case_id": label["case_id"],
                 "incident_id": scenario["id"],
+                "data_kind": "authored_synthetic_base",
                 "expected_primary_label": expected,
                 "predicted_ranked_labels": predicted,
                 "top_1_correct": bool(predicted and predicted[0] == expected),
@@ -98,17 +103,54 @@ def _apply_variant(scenario: dict[str, Any], case: dict[str, Any]) -> dict[str, 
     return variant
 
 
+def _independent_items(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items = deepcopy(evidence)
+    for item in items:
+        item["observed_at"] = parse_dt(item["observed_at"])
+    return items
+
+
 def evaluate_expanded_dataset() -> dict[str, Any]:
-    """Evaluate base cases plus deterministic severity, ambiguity, and abstention variants."""
+    """Evaluate base cases, derived variants, and separate authored cases."""
     scenarios_payload = load_json(SCENARIOS_PATH)
     base_labels_payload = load_json(LABELS_PATH)
     variants_payload = load_json(VARIANTS_PATH)
+    independent_payload = load_json(INDEPENDENT_CASES_PATH)
     scenarios = {scenario["id"]: scenario for scenario in scenarios_payload["scenarios"]}
-    cases: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    independent_evidence = independent_payload["evidence_by_case"]
+    cases: list[tuple[dict[str, Any], str, Any, list[dict[str, Any]], str]] = []
     for label in base_labels_payload["cases"]:
-        cases.append((label, scenarios[label["incident_id"]]))
+        scenario = scenarios[label["incident_id"]]
+        cases.append(
+            (
+                label,
+                scenario["id"],
+                parse_dt(scenario["started_at"]),
+                build_evidence_items(scenario),
+                "authored_synthetic_base",
+            )
+        )
     for label in variants_payload["cases"]:
-        cases.append((label, _apply_variant(scenarios[label["incident_id"]], label)))
+        scenario = _apply_variant(scenarios[label["incident_id"]], label)
+        cases.append(
+            (
+                label,
+                scenario["id"],
+                parse_dt(scenario["started_at"]),
+                build_evidence_items(scenario),
+                "derived_synthetic_variant",
+            )
+        )
+    for label in independent_payload["cases"]:
+        cases.append(
+            (
+                label,
+                label["incident_id"],
+                parse_dt(label["incident_start"]),
+                _independent_items(independent_evidence[label["case_id"]]),
+                label["data_kind"],
+            )
+        )
 
     outcomes: list[dict[str, Any]] = []
     reciprocal_ranks: list[float] = []
@@ -117,10 +159,8 @@ def evaluate_expanded_dataset() -> dict[str, Any]:
     labeled_correct = 0
     abstention_cases = 0
     correct_abstentions = 0
-    for label, scenario in cases:
-        result = evaluate_rules(
-            scenario["id"], parse_dt(scenario["started_at"]), build_evidence_items(scenario)
-        )
+    for label, incident_id, incident_start, items, data_kind in cases:
+        result = evaluate_rules(incident_id, incident_start, items)
         predicted = [
             RULE_TO_LABEL[rule["rule_id"]]
             for rule in result["fired_rules"]
@@ -150,7 +190,8 @@ def evaluate_expanded_dataset() -> dict[str, Any]:
         outcomes.append(
             {
                 "case_id": label["case_id"],
-                "incident_id": scenario["id"],
+                "incident_id": incident_id,
+                "data_kind": data_kind,
                 "expected_primary_label": expected,
                 "predicted_ranked_labels": predicted,
                 "top_1_correct": top_one,
@@ -167,13 +208,25 @@ def evaluate_expanded_dataset() -> dict[str, Any]:
         )
 
     count = len(outcomes)
+    source_counts = {
+        data_kind: sum(outcome["data_kind"] == data_kind for outcome in outcomes)
+        for data_kind in sorted({outcome["data_kind"] for outcome in outcomes})
+    }
+    dataset_version = (
+        f"{variants_payload['dataset_version']}+{independent_payload['dataset_version']}"
+    )
     return {
-        "dataset_version": variants_payload["dataset_version"],
+        "dataset_version": dataset_version,
         "dataset_sha256": sha256_json(
-            {"base_labels": base_labels_payload, "variants": variants_payload}
+            {
+                "base_labels": base_labels_payload,
+                "variants": variants_payload,
+                "independent_cases": independent_payload,
+            }
         ),
         "fixture_version": scenarios_payload["fixture_version"],
         "case_count": count,
+        "source_counts": source_counts,
         "labeled_case_count": len(reciprocal_ranks),
         "abstention_case_count": abstention_cases,
         "metrics": {

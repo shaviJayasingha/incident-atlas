@@ -1,0 +1,64 @@
+{
+  "dataset_version": "independent-cases-v1",
+  "cases": [
+    {
+      "case_id": "case-independent-fraud-consumer-lag-v1",
+      "incident_id": "eval-fraud-consumer-lag-001",
+      "incident_start": "2025-04-01T12:00:00Z",
+      "data_kind": "authored_synthetic_independent",
+      "expected_primary_label": "fraud_consumer_lag",
+      "expected_supporting_evidence_ids": [
+        "ev-independent-queue-lag-before",
+        "ev-independent-queue-lag-rise",
+        "ev-independent-queue-producer-rate",
+        "ev-independent-queue-consumer-before",
+        "ev-independent-queue-consumer-drop"
+      ],
+      "expected_abstention": false,
+      "notes": "Independent queue scenario: producers remain steady while a stopped fraud consumer allows queue lag to accumulate."
+    },
+    {
+      "case_id": "case-independent-checkout-cpu-throttling-v1",
+      "incident_id": "eval-checkout-cpu-throttling-002",
+      "incident_start": "2025-04-02T09:30:00Z",
+      "data_kind": "authored_synthetic_independent",
+      "expected_primary_label": "checkout_cpu_throttling",
+      "expected_supporting_evidence_ids": [
+        "ev-independent-cpu-throttle-before",
+        "ev-independent-cpu-throttle-rise",
+        "ev-independent-checkout-latency-before",
+        "ev-independent-checkout-latency-rise"
+      ],
+      "expected_abstention": false,
+      "notes": "Independent CPU scenario: container CPU throttling rises before checkout server latency, with no cache, database-pool, or payment-gateway pattern."
+    },
+    {
+      "case_id": "case-independent-shipping-span-ambiguous-v1",
+      "incident_id": "eval-shipping-span-ambiguous-003",
+      "incident_start": "2025-04-03T16:15:00Z",
+      "data_kind": "authored_synthetic_independent",
+      "expected_primary_label": null,
+      "expected_supporting_evidence_ids": [],
+      "expected_abstention": true,
+      "notes": "Independent ambiguity case: one slow shipping span is visible, but no baseline or corroborating impact signal supports a cause."
+    }
+  ],
+  "evidence_by_case": {
+    "case-independent-fraud-consumer-lag-v1": [
+      {"evidence_id":"ev-independent-queue-lag-before","kind":"metric","observed_at":"2025-04-01T11:55:00Z","payload":{"metric_name":"fraud.kafka.consumer_lag","value":2,"labels":{}}},
+      {"evidence_id":"ev-independent-queue-lag-rise","kind":"metric","observed_at":"2025-04-01T12:05:00Z","payload":{"metric_name":"fraud.kafka.consumer_lag","value":1250,"labels":{}}},
+      {"evidence_id":"ev-independent-queue-producer-rate","kind":"metric","observed_at":"2025-04-01T12:05:00Z","payload":{"metric_name":"fraud.kafka.records_produced_rate","value":420,"labels":{}}},
+      {"evidence_id":"ev-independent-queue-consumer-before","kind":"metric","observed_at":"2025-04-01T11:55:00Z","payload":{"metric_name":"fraud.kafka.records_consumed_rate","value":400,"labels":{}}},
+      {"evidence_id":"ev-independent-queue-consumer-drop","kind":"metric","observed_at":"2025-04-01T12:05:00Z","payload":{"metric_name":"fraud.kafka.records_consumed_rate","value":35,"labels":{}}}
+    ],
+    "case-independent-checkout-cpu-throttling-v1": [
+      {"evidence_id":"ev-independent-cpu-throttle-before","kind":"metric","observed_at":"2025-04-02T09:25:00Z","payload":{"metric_name":"checkout.container.cpu.throttled_ratio","value":0.02,"labels":{}}},
+      {"evidence_id":"ev-independent-cpu-throttle-rise","kind":"metric","observed_at":"2025-04-02T09:35:00Z","payload":{"metric_name":"checkout.container.cpu.throttled_ratio","value":0.72,"labels":{}}},
+      {"evidence_id":"ev-independent-checkout-latency-before","kind":"metric","observed_at":"2025-04-02T09:25:00Z","payload":{"metric_name":"checkout.http.server.duration.p95","value":125,"labels":{}}},
+      {"evidence_id":"ev-independent-checkout-latency-rise","kind":"metric","observed_at":"2025-04-02T09:35:00Z","payload":{"metric_name":"checkout.http.server.duration.p95","value":910,"labels":{}}}
+    ],
+    "case-independent-shipping-span-ambiguous-v1": [
+      {"evidence_id":"ev-independent-shipping-slow-span","kind":"span","observed_at":"2025-04-03T16:20:00Z","payload":{"operation":"shipping.quote","service_name":"shipping","duration_ms":4200,"status":"OK","attributes":{"peer.service":"currency"}}}
+    ]
+  }
+}

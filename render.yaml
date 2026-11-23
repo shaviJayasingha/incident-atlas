@@ -16,9 +16,10 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: MIGRATION_DATABASE_URL
-        fromDatabase:
-          name: incident-atlas-db
-          property: connectionString
+        # Pin the original migration credential before creating a separate
+        # Render-managed runtime credential. A dynamic connectionString may follow
+        # the database's default credential when Render rotates it.
+        sync: false
       - key: RUNTIME_DB_PASSWORD
         sync: false
       - key: CORS_ALLOWED_ORIGINS
