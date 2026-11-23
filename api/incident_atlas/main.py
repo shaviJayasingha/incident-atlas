@@ -40,7 +40,7 @@ app.add_middleware(
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Idempotency-Key"],
+    allow_headers=["Content-Type", "Idempotency-Key", "X-Incident-Atlas-Visitor-ID"],
     expose_headers=["X-Request-ID", "Retry-After"],
 )
 app.include_router(router)

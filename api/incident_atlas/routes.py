@@ -53,7 +53,7 @@ from incident_atlas.schemas import (
     TimelineEventOut,
     TimelineResponse,
 )
-from incident_atlas.security import enforce_rate_limit, trusted_client_address
+from incident_atlas.security import enforce_rate_limit, source_hash, trusted_client_address
 from incident_atlas.service import (
     create_live_investigation,
     get_investigation,
@@ -100,6 +100,24 @@ def _client_host(request: Request, settings: Settings) -> str | None:
         request.headers.get("x-forwarded-for"),
         settings.trusted_proxy_cidrs,
     )
+
+
+def _approval_actor(request: Request, settings: Settings) -> str:
+    """Return a privacy-preserving browser identity, falling back to the client address.
+
+    The browser token is an untrusted random identifier used only to distinguish
+    anonymous visitors behind the same NAT and to find their own simulation after
+    a refresh. Rate limits continue to use the trusted client address.
+    """
+    token = request.headers.get("x-incident-atlas-visitor-id")
+    if token:
+        try:
+            token = str(uuid.UUID(token))
+        except (ValueError, AttributeError):
+            token = ""
+    address = _client_host(request, settings) or "unknown"
+    identity = f"browser:{token}" if token else f"network:{address}"
+    return source_hash(settings, identity)
 
 
 def _effective_window(
@@ -489,7 +507,8 @@ def _create_approval(
     source: Literal["live_ai", "stored_replay"],
     body: ApprovalCreate,
 ) -> ApprovalResponse:
-    actor = enforce_rate_limit(db, settings, _client_host(request, settings), "approval")
+    enforce_rate_limit(db, settings, _client_host(request, settings), "approval")
+    actor = _approval_actor(request, settings)
     if source == "live_ai":
         result = db.get(Investigation, result_id)
         if result is None:
@@ -570,6 +589,51 @@ def _create_approval(
     )
 
 
+def _read_approval(
+    *,
+    db: Session,
+    settings: Settings,
+    request: Request,
+    result_id: str,
+    source: Literal["live_ai", "stored_replay"],
+    mitigation_id: str,
+) -> ApprovalResponse:
+    if source == "live_ai":
+        if db.get(Investigation, result_id) is None:
+            raise ApiError(404, "not_found", "The requested investigation does not exist.")
+        result_filter = SimulationApproval.investigation_id == result_id
+    else:
+        if db.get(ReplayReport, result_id) is None:
+            raise ApiError(404, "not_found", "The requested replay does not exist.")
+        result_filter = SimulationApproval.replay_report_id == result_id
+
+    approval = db.scalar(
+        select(SimulationApproval).where(
+            result_filter,
+            SimulationApproval.mitigation_id == mitigation_id,
+            SimulationApproval.visitor_session_hash == _approval_actor(request, settings),
+        )
+    )
+    if approval is None:
+        raise ApiError(
+            404,
+            "approval_not_found",
+            "No simulation approval is recorded for this anonymous browser.",
+        )
+    return ApprovalResponse(
+        id=approval.id,
+        investigation_id=approval.investigation_id,
+        replay_id=approval.replay_report_id,
+        mitigation_id=approval.mitigation_id,
+        status="simulated_approved",
+        simulation_only=True,
+        external_action_performed=False,
+        recorded_at=approval.recorded_at,
+        message="Simulation recorded; no system was changed.",
+        request_id=approval.request_id,
+    )
+
+
 @router.post(
     "/investigations/{investigation_id}/mitigation-approvals",
     response_model=ApprovalResponse,
@@ -609,6 +673,48 @@ def approve_replay_simulation(
         result_id=replay_id,
         source="stored_replay",
         body=body,
+    )
+
+
+@router.get(
+    "/investigations/{investigation_id}/mitigation-approvals/{mitigation_id}",
+    response_model=ApprovalResponse,
+)
+def read_live_simulation_approval(
+    investigation_id: str,
+    mitigation_id: str,
+    request: Request,
+    db: Db,
+    settings: Cfg,
+) -> ApprovalResponse:
+    return _read_approval(
+        db=db,
+        settings=settings,
+        request=request,
+        result_id=investigation_id,
+        source="live_ai",
+        mitigation_id=mitigation_id,
+    )
+
+
+@router.get(
+    "/replays/{replay_id}/mitigation-approvals/{mitigation_id}",
+    response_model=ApprovalResponse,
+)
+def read_replay_simulation_approval(
+    replay_id: str,
+    mitigation_id: str,
+    request: Request,
+    db: Db,
+    settings: Cfg,
+) -> ApprovalResponse:
+    return _read_approval(
+        db=db,
+        settings=settings,
+        request=request,
+        result_id=replay_id,
+        source="stored_replay",
+        mitigation_id=mitigation_id,
     )
 
 

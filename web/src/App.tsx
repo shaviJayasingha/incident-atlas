@@ -323,14 +323,36 @@ function MitigationReview() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [approval, setApproval] = useState<ApprovalResponse | null>(null)
   const [approvalError, setApprovalError] = useState<Error | null>(null)
+  const [approvalLookup, setApprovalLookup] = useState<'loading' | 'ready' | 'error'>('loading')
   const [saving, setSaving] = useState(false)
   const { reportResource, report, provenanceValid, incidentResource, incident } = useReplayBundle(reportId)
+  const hypothesis = report?.hypotheses.find(item => item.mitigation)
+  const mitigation = hypothesis?.mitigation
+  useEffect(() => {
+    if (!report || !mitigation) {
+      setApproval(null)
+      setApprovalError(null)
+      setApprovalLookup('ready')
+      return
+    }
+    const controller = new AbortController()
+    setApproval(null)
+    setApprovalError(null)
+    setApprovalLookup('loading')
+    dataClient.getApproval(report, mitigation.id, controller.signal).then(result => {
+      setApproval(result)
+      setApprovalLookup('ready')
+    }).catch(reason => {
+      if (controller.signal.aborted) return
+      setApprovalError(reason instanceof Error ? reason : new Error('Could not check the saved approval.'))
+      setApprovalLookup('error')
+    })
+    return () => controller.abort()
+  }, [report?.id, report?.source, mitigation?.id])
   if (reportResource.status === 'loading' || reportResource.status === 'ready' && incidentResource.status === 'loading') return <div className="page-wrap"><PageTitle eyebrow="SIMULATION REVIEW" title="Loading mitigation proposal" description="Resolving the stored report before presenting its proposed action."/><LoadingState label="Loading proposal"/></div>
   if (reportResource.status === 'error' || incidentResource.status === 'error') return <div className="page-wrap"><Notice kind="error" title="Mitigation proposal unavailable">The stored report could not be resolved. No approval was recorded.</Notice><Link to="/incidents" className="button button-secondary">Incident library</Link></div>
   if (report && !provenanceValid) return <div className="page-wrap"><Notice kind="error" title="Report provenance mismatch">This result does not match the requested source. No approval was submitted.</Notice><Link to="/incidents" className="button button-secondary">Incident library</Link></div>
   if (!report || !incident) return <div className="page-wrap"><EmptyState title="Mitigation proposal unavailable" body="Return to the incident library to choose a stored replay." action={<Link to="/incidents" className="button button-secondary">Incident library</Link>} /></div>
-  const hypothesis = report.hypotheses.find(item => item.mitigation)
-  const mitigation = hypothesis?.mitigation
   if (!mitigation) return <div className="page-wrap"><Notice kind="info" title="No mitigation proposal">This report does not include a simulation proposal.</Notice><Link to={`/investigations/${report.id}?source=${report.source}`} className="text-link">Back to report</Link></div>
   const reportPath = investigationPath(report.id, report.source)
   const recordApproval = async () => {
@@ -348,8 +370,8 @@ function MitigationReview() {
   }
   return <div className="page-wrap mitigation-page"><div className="back-row"><Link to={reportPath}><span>←</span> Back to report</Link><span className="path-divider">/</span><code>MITIGATION REVIEW</code><div className="back-right"><SourceTag tone="amber">SIMULATION ONLY</SourceTag></div></div>
     <PageTitle eyebrow="HUMAN APPROVAL BOUNDARY" title="Review proposed mitigation" description="Inspect the proposed response and decide whether to record a simulation approval." />
-    <div className="mitigation-review-layout"><div className="panel mitigation-review-card"><div className="proposal-top"><span className="proposal-symbol"><Icon name="check" size={21}/></span><SourceTag tone="amber">PROPOSAL · NOT EXECUTED</SourceTag></div><div className="eyebrow">PROPOSED RESPONSE</div><h2>{mitigation.summary}</h2><p className="proposal-copy">This proposal is attached to the top-ranked hypothesis for <b>{incident.title}</b>. The evidence is synthetic; review it before approving the simulation.</p><div className="proposal-context"><span>Related hypothesis</span><b>{hypothesis.statement}</b><Link to={reportPath} className="text-link">Review supporting evidence <Icon name="arrow" size={14}/></Link></div><div className="proposal-actions"><button className="button button-primary" onClick={() => { setApprovalError(null); setDialogOpen(true) }} disabled={Boolean(approval)}>{approval ? 'Simulation recorded' : 'Approve simulated mitigation'} {!approval && <Icon name="arrow" size={15}/>}</button><Link to={reportPath} className="button button-secondary">Return to report</Link></div></div>
-      <aside className="mitigation-aside"><div className="boundary-panel"><div className="boundary-seal"><Icon name="check" size={21}/></div><div className="eyebrow">SIMULATION BOUNDARY</div><h3>This action cannot reach a live system</h3><ul><li><Icon name="check" size={14}/> No external mitigation call</li><li><Icon name="check" size={14}/> No credentials or connected accounts</li><li><Icon name="check" size={14}/> No infrastructure change</li></ul><div className="boundary-rule"/><div className="boundary-status"><span>External action performed</span><b>{approval?.external_action_performed === false ? 'NO' : 'NO'}</b></div><div className="boundary-status"><span>Approval persistence</span><b>{approval ? dataMode === 'fixtures' ? 'LOCAL PREVIEW' : 'PERSISTED' : 'NOT RECORDED'}</b></div></div></aside></div>
+    <div className="mitigation-review-layout"><div className="panel mitigation-review-card"><div className="proposal-top"><span className="proposal-symbol"><Icon name="check" size={21}/></span><SourceTag tone="amber">PROPOSAL · NOT EXECUTED</SourceTag></div><div className="eyebrow">PROPOSED RESPONSE</div><h2>{mitigation.summary}</h2><p className="proposal-copy">This proposal is attached to the top-ranked hypothesis for <b>{incident.title}</b>. The evidence is synthetic; review it before approving the simulation.</p><div className="proposal-context"><span>Related hypothesis</span><b>{hypothesis.statement}</b><Link to={reportPath} className="text-link">Review supporting evidence <Icon name="arrow" size={14}/></Link></div><div className="proposal-actions"><button className="button button-primary" onClick={() => { setApprovalError(null); setDialogOpen(true) }} disabled={Boolean(approval) || approvalLookup !== 'ready'}>{approval ? 'Simulation recorded' : approvalLookup === 'loading' ? 'Checking saved approval…' : approvalLookup === 'error' ? 'Approval status unavailable' : 'Approve simulated mitigation'} {!approval && approvalLookup === 'ready' && <Icon name="arrow" size={15}/>}</button><Link to={reportPath} className="button button-secondary">Return to report</Link></div>{approvalLookup === 'error' && <Notice kind="error" title="Saved approval status unavailable">{approvalError?.message ?? 'Reload this page to check the saved approval before submitting another.'}</Notice>}</div>
+      <aside className="mitigation-aside"><div className="boundary-panel"><div className="boundary-seal"><Icon name="check" size={21}/></div><div className="eyebrow">SIMULATION BOUNDARY</div><h3>This action cannot reach a live system</h3><ul><li><Icon name="check" size={14}/> No external mitigation call</li><li><Icon name="check" size={14}/> No credentials or connected accounts</li><li><Icon name="check" size={14}/> No infrastructure change</li></ul><div className="boundary-rule"/><div className="boundary-status"><span>External action performed</span><b>NO</b></div><div className="boundary-status"><span>Approval persistence</span><b>{approval ? dataMode === 'fixtures' ? 'LOCAL PREVIEW' : 'PERSISTED' : approvalLookup === 'loading' ? 'CHECKING' : approvalLookup === 'error' ? 'UNKNOWN' : 'NOT RECORDED'}</b></div></div></aside></div>
     {approval && <div className="approval-success" role="status"><span className="success-mark"><Icon name="check" size={20}/></span><div><div className="eyebrow">SIMULATION RECORDED</div><h3>{approval.message}</h3><p>simulation_only={String(approval.simulation_only)} · external_action_performed={String(approval.external_action_performed)} · record {approval.id} · {dateTime(approval.recorded_at)} UTC</p><small>{dataMode === 'fixtures' ? 'Development fixture preview: local-only confirmation.' : `Persisted backend approval · request ${approval.request_id}`}</small></div><SourceTag tone="green">{dataMode === 'fixtures' ? 'LOCAL ONLY' : 'PERSISTED'}</SourceTag></div>}
     <ApprovalDialog open={dialogOpen} onCancel={() => setDialogOpen(false)} onApprove={recordApproval} busy={saving} error={approvalError} mitigation={mitigation.summary}/>
   </div>

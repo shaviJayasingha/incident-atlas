@@ -36,6 +36,7 @@ test('no-key replay journey resolves recorded evidence and persists an acknowled
     if (url.pathname.endsWith('/telemetry')) return json({ kind: 'metrics', items: [], next_cursor: null, request_id: 'req-telemetry' })
     if (url.pathname === `/api/v1/incidents/${incident.id}/replay`) return json(report)
     if (url.pathname === `/api/v1/snapshots/${report.evidence_snapshot_id}/evidence/${evidence.evidence_id}`) return json(evidence)
+    if (url.pathname === `/api/v1/replays/${report.id}/mitigation-approvals/mit-1`) return json(approval)
     if (url.pathname === `/api/v1/replays/${report.id}/mitigation-approvals`) return json(approval, 201)
     if (url.pathname === '/api/v1/investigations/inv-live/mitigation-approvals') return json({ ...approval, id: 'sim-live', replay_id: null, investigation_id: 'inv-live' }, 201)
     throw new Error(`Unexpected request: ${call.method} ${url.pathname}`)
@@ -62,6 +63,11 @@ test('no-key replay journey resolves recorded evidence and persists an acknowled
   assert.equal(approvalCall.method, 'POST')
   assert.equal(JSON.parse(approvalCall.body).simulation_acknowledged, true)
   assert.match(approvalCall.url, /\/replays\/replay-cache-v1\/mitigation-approvals$/)
+  const restored = await client.getApproval(storedReplay, 'mit-1')
+  assert.equal(restored.id, result.id)
+  const restoreCall = calls.at(-1)
+  assert.equal(restoreCall.method, 'GET')
+  assert.equal(restoreCall.headers.get('X-Incident-Atlas-Visitor-ID'), approvalCall.headers.get('X-Incident-Atlas-Visitor-ID'))
   const liveReport = { ...storedReplay, id: 'inv-live', replay_id: null, source: 'live_ai', model_call_made: true }
   const liveApproval = await client.approve(liveReport, { hypothesis_id: 'hyp-1', mitigation_id: 'mit-1', simulation_acknowledged: true })
   assert.equal(liveApproval.investigation_id, 'inv-live')
@@ -115,6 +121,38 @@ test('mismatched snapshot evidence and unsafe approval responses are withheld', 
   const replay = { id: 'replay-1', replay_id: 'replay-1', source: 'stored_replay', model_call_made: false }
   await assert.rejects(client.approve(replay, { hypothesis_id: 'hyp-1', mitigation_id: 'mit-1', simulation_acknowledged: true }), /did not confirm a simulation-only action/)
   assert.equal(calls.length, 2)
+})
+
+test('a missing saved approval is an empty state rather than a request failure', async t => {
+  const calls = captureFetch(t, () => json({ code: 'approval_not_found', status: 404, request_id: 'req-none' }, 404, { 'Content-Type': 'application/problem+json' }))
+  const client = new ApiClient('http://atlas.test/api/v1')
+  const report = { id: 'replay-1', replay_id: 'replay-1', source: 'stored_replay', model_call_made: false }
+  assert.equal(await client.getApproval(report, 'mit-1'), null)
+  assert.match(calls[0].url, /\/replays\/replay-1\/mitigation-approvals\/mit-1$/)
+})
+
+test('anonymous approval identity survives a reload and is scoped to browser storage', async t => {
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const values = new Map()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) },
+  })
+  t.after(() => {
+    if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage)
+    else delete globalThis.localStorage
+  })
+  const approval = { id: 'sim-browser', replay_id: 'replay-1', investigation_id: null, mitigation_id: 'mit-1', status: 'simulated_approved', simulation_only: true, external_action_performed: false, recorded_at: '2026-01-15T10:26:00Z', message: 'Simulation recorded; no system was changed.', request_id: 'req-approval' }
+  const calls = captureFetch(t, call => new URL(call.url).pathname.endsWith('/mitigation-approvals/mit-1') ? json(approval) : json(approval, 201))
+  const report = { id: 'replay-1', replay_id: 'replay-1', source: 'stored_replay', model_call_made: false }
+  const firstTab = new ApiClient('http://atlas.test/api/v1')
+  await firstTab.approve(report, { hypothesis_id: 'hyp-1', mitigation_id: 'mit-1', simulation_acknowledged: true })
+  const firstIdentity = calls[0].headers.get('X-Incident-Atlas-Visitor-ID')
+  assert.match(firstIdentity, /^[0-9a-f-]{36}$/i)
+
+  const reloadedTab = new ApiClient('http://atlas.test/api/v1')
+  assert.equal((await reloadedTab.getApproval(report, 'mit-1')).id, approval.id)
+  assert.equal(calls[1].headers.get('X-Incident-Atlas-Visitor-ID'), firstIdentity)
 })
 
 test('live investigation sends an idempotency key once and surfaces stable invalid-output errors', async t => {

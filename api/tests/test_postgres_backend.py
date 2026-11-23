@@ -477,6 +477,8 @@ def test_public_api_contract_hidden_labels_and_replay_evidence(pg_client, monkey
         "/api/v1/incidents/{incident_id}/replay",
         "/api/v1/investigations",
         "/api/v1/replays/{replay_id}/mitigation-approvals",
+        "/api/v1/replays/{replay_id}/mitigation-approvals/{mitigation_id}",
+        "/api/v1/investigations/{investigation_id}/mitigation-approvals/{mitigation_id}",
     ):
         assert route in openapi["paths"]
 
@@ -550,11 +552,14 @@ def test_query_limit_validation_and_cors_allowlist(pg_client):
         headers={
             "Origin": "http://localhost:5173",
             "Access-Control-Request-Method": "POST",
-            "Access-Control-Request-Headers": "content-type",
+            "Access-Control-Request-Headers": "content-type,x-incident-atlas-visitor-id",
         },
     )
     assert allowed.status_code == 200
     assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "x-incident-atlas-visitor-id" in allowed.headers[
+        "access-control-allow-headers"
+    ].lower()
     denied = pg_client.options(
         "/api/v1/replays/replay-cache-v1/mitigation-approvals",
         headers={
@@ -855,22 +860,47 @@ def test_replay_approval_is_deduplicated_per_visitor(pg_client):
         "mitigation_id": hypothesis["mitigation"]["id"],
         "simulation_acknowledged": True,
     }
-    first = pg_client.post(
-        f"/api/v1/replays/{report['id']}/mitigation-approvals", json=body
-    )
-    duplicate = pg_client.post(
-        f"/api/v1/replays/{report['id']}/mitigation-approvals", json=body
-    )
+    first_visitor = {"X-Incident-Atlas-Visitor-ID": "68d6fe47-b586-4c94-9ed8-7a401a1b4cf1"}
+    second_visitor = {"X-Incident-Atlas-Visitor-ID": "e70e2e8d-2ed3-4e88-9ce2-0fef841c9baa"}
+    with (
+        TestClient(app, client=("203.0.113.17", 51234)) as first_browser,
+        TestClient(app, client=("203.0.113.17", 51235)) as second_browser,
+    ):
+        first = first_browser.post(
+            f"/api/v1/replays/{report['id']}/mitigation-approvals",
+            json=body,
+            headers=first_visitor,
+        )
+        duplicate = first_browser.post(
+            f"/api/v1/replays/{report['id']}/mitigation-approvals",
+            json=body,
+            headers=first_visitor,
+        )
+        second = second_browser.post(
+            f"/api/v1/replays/{report['id']}/mitigation-approvals",
+            json=body,
+            headers=second_visitor,
+        )
+        # A reload sends the same browser ID and restores that browser's saved result.
+        restored = first_browser.get(
+            f"/api/v1/replays/{report['id']}/mitigation-approvals/{hypothesis['mitigation']['id']}",
+            headers=first_visitor,
+        )
+        unknown_browser = first_browser.get(
+            f"/api/v1/replays/{report['id']}/mitigation-approvals/{hypothesis['mitigation']['id']}",
+            headers={"X-Incident-Atlas-Visitor-ID": "ba59f2a5-4853-4e4d-b22c-3937b36fc790"},
+        )
     assert first.status_code == 201
     assert duplicate.status_code == 409
-
-    with TestClient(app, client=("203.0.113.17", 51234)) as another_visitor:
-        second = another_visitor.post(
-            f"/api/v1/replays/{report['id']}/mitigation-approvals", json=body
-        )
     assert second.status_code == 201
     assert second.json()["simulation_only"] is True
     assert second.json()["external_action_performed"] is False
+    assert first.json()["id"] != second.json()["id"]
+
+    assert restored.status_code == 200
+    assert restored.json()["id"] == first.json()["id"]
+    assert unknown_browser.status_code == 404
+    assert unknown_browser.json()["code"] == "approval_not_found"
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(SimulationApproval)) == 2
         approval_id = db.scalar(

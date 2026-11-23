@@ -303,3 +303,12 @@ jobs:
           python-version: "3.12"
       - name: Build and inspect tracked-file release ZIP
         run: python scripts/build_release_zip.py --output "$RUNNER_TEMP/incident-atlas-release.zip"
+      - name: Upload release ZIP and checksum for this commit
+        uses: actions/upload-artifact@v4
+        with:
+          name: incident-atlas-release-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/incident-atlas-release.zip
+            ${{ runner.temp }}/incident-atlas-release.zip.sha256
+          if-no-files-found: error
+          retention-days: 14

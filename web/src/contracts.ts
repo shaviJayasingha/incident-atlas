@@ -253,5 +253,6 @@ export interface IncidentAtlasClient {
   getReport(id: string, source: Source, signal?: AbortSignal): Promise<InvestigationReport | undefined>
   getEvidence(incidentId: string, evidenceId: string, snapshotId?: string, signal?: AbortSignal): Promise<EvidenceItemOut | undefined>
   createInvestigation(body: InvestigationCreate, idempotencyKey: string, signal?: AbortSignal): Promise<InvestigationReport>
+  getApproval(report: InvestigationReport, mitigationId: string, signal?: AbortSignal): Promise<ApprovalResponse | null>
   approve(report: InvestigationReport, body: ApprovalCreate, signal?: AbortSignal): Promise<ApprovalResponse>
 }

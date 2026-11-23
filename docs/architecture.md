@@ -14,14 +14,14 @@
 | App observability | OpenTelemetry SDK in the API, local OpenTelemetry Collector, Prometheus metrics, and Jaeger trace UI in the local Compose profile. | Observe API latency, errors, model-call timing, and request traces separately from the synthetic incident dataset. The Collector provides a vendor-neutral telemetry pipeline. |
 | AI workflow | Small, explicit Python orchestration function; OpenAI Responses API; strict structured output schema. The application owns every data query and validation step. | Fixed one-pass workflow is easier to review, evaluate, and bound than an autonomous agent. Structured output supports rendering typed hypotheses, uncertainty, and evidence references. |
 | Hosting | Static site on Netlify; FastAPI container and managed PostgreSQL on Render; server-side model credential in Render secret configuration. | Static/CDN delivery for the UI and managed hosting for the one dynamic service and database. Public replay does not depend on model-provider availability. |
-| Source control / CI | Public GitHub repository with documentation, locked dependencies, required checks, deployment configuration, and no secrets. | Keeps scenario definitions and evaluation method inspectable and makes the deployed demo reproducible. Repository creation is a backlog item because no Git remote exists yet. |
+| Source control / CI | Public GitHub repository with documentation, locked dependencies, CI checks, deployment configuration, and no secrets. | Keeps scenario definitions and evaluation method inspectable and makes the demo reproducible. The repository and CI are implemented; the current release and deployment status is recorded in the pre-deployment report. |
 
-No framework versions are pinned in Step 1. Step 2 should choose mutually compatible supported versions, commit lockfiles, and record them in the backend and frontend READMEs.
+This Step 1 blueprint selected the stack before pinning versions. The implementation now records compatible dependencies in the backend and frontend lockfiles and READMEs.
 
 ## System components
 
 ```mermaid
-flowchart LR
+flowchart TD
   V["Visitor browser"] -->|"HTTPS static assets"| W["React / Vite site"]
   W -->|"JSON API"| A["FastAPI service"]
   A -->|"bounded reads and writes"| D[("PostgreSQL")]

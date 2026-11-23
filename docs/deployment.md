@@ -3,7 +3,20 @@
 **Target:** GitHub → Netlify React/Vite site → Render FastAPI and PostgreSQL.
 **Current state:** configuration and CI are prepared; no Render or Netlify resources have been provisioned. Do not create recurring resources until the account, billing setup, and monthly spending cap are approved.
 
-**Verified application revision:** [`b8168985fe2bd7fec807d6691f98824b0f9b4f46`](https://github.com/shaviJayasingha/incident-atlas/commit/b8168985fe2bd7fec807d6691f98824b0f9b4f46); [CI run #24 passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45122787848). PostgreSQL grants and container startup passed in GitHub-hosted CI against PostgreSQL 17. The actual Render managed-database preflight has not run; its role privileges remain an explicit deployment gate.
+**Release-candidate source revision:** [`33b3356f42a9543ef70823acac1b387884e9f2c8`](https://github.com/shaviJayasingha/incident-atlas/commit/33b3356f42a9543ef70823acac1b387884e9f2c8) in [PR #5](https://github.com/shaviJayasingha/incident-atlas/pull/5); [CI run #30 passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45149721338). PostgreSQL grants and container startup passed in GitHub-hosted CI against PostgreSQL 17. The actual Render managed-database preflight has not run; its role privileges remain an explicit deployment gate. No production host has been provisioned.
+
+## Deployment sequence
+
+```mermaid
+flowchart TD
+  A["Approve budget and account access"] --> B["Reserve the Netlify origin"]
+  B --> C["Provision Render PostgreSQL and pin migration URL"]
+  C --> D["Create runtime role, migrate, seed, and start the API"]
+  D --> E["Build and publish Netlify with the API URL and exact CORS origin"]
+  E --> F["Check both origins and walk the replay on desktop and mobile"]
+```
+
+This order reserves the site origin before configuring API CORS, then waits for the API hostname before building the static frontend.
 
 ## Local Docker Compose
 

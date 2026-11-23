@@ -22,7 +22,7 @@ This is the Step 6 snapshot. Later release hardening changes and the current dep
 
 The API has no public telemetry-upload or user-prompt endpoint. Telemetry strings are treated as untrusted text in the live system prompt; provider tests put prompt-like text in log messages and nested hostile evidence fields, then verify they remain JSON data, the system instruction is unchanged, the request has no tools, and `store=false`. Evidence IDs must be non-empty and resolve inside the recorded snapshot. Empty-support hypotheses, malformed output, refusals, timeouts, and unknown evidence IDs are rejected. Schema validation and citation membership checks do not prove that a model's wording is semantically supported by a real cited record; that remains a human-review and evaluation limitation.
 
-Public replay and evidence records are intentionally readable without authentication: the product has no accounts, uses synthetic public fixtures, and supports deep links without session state. Anonymous rate/approval deduplication is scoped by an HMAC of the request source address, not a durable browser identity.
+Public replay and evidence records are intentionally readable without authentication: the product has no accounts, uses synthetic public fixtures, and supports deep links without session state. At this report's snapshot, approval deduplication used an HMAC of the request source address. The later completion-audit change in PR #5 added an anonymous browser ID for approval write/readback so separate visitors on one shared IP can record separate simulations and the same browser can restore its approval after refresh; request rate limits remain network-scoped. This document preserves the earlier Step 6 findings and is not the current implementation report.
 
 ## Evidence-recall investigation and evaluation
 
@@ -69,5 +69,5 @@ The first hosted CI attempts exposed test assertions that did not match the docu
 - No genuine provider request was made because no server-side model key is available. Mocked tests do not verify provider account access, current model availability, live structured output, or billed usage.
 - The public deployed desktop/mobile browser walkthrough remains open because there is no deployed URL.
 - Separate the runtime database role from migration/evaluation access and verify grants on a production-like PostgreSQL instance.
-- Semantic grounding of validly cited live claims remains a human-review/evaluation concern; the test set is nine small synthetic cases.
+- Semantic grounding of validly cited live claims remains a human-review/evaluation concern; the expanded rules regression set contains 12 small authored synthetic cases and does not establish real-world accuracy.
 - Production proxy/IP handling, hosted CORS origins, public rate limits, and secret configuration remain deployment-dependent and were not exercised against a deployed service. No frontend lint target is configured; `npm run lint` is not an available command.

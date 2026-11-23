@@ -5,10 +5,15 @@ from incident_atlas.main import app
 
 def test_openapi_exposes_typed_backend_contracts():
     schema = app.openapi()
-    assert len(schema["paths"]) == 14
+    assert len(schema["paths"]) == 16
     assert "SnapshotMetadata" in schema["components"]["schemas"]
     assert "/api/v1/incidents/{incident_id}/timeline" in schema["paths"]
     assert "/api/v1/investigations/{investigation_id}/mitigation-approvals" in schema["paths"]
+    assert "/api/v1/replays/{replay_id}/mitigation-approvals/{mitigation_id}" in schema["paths"]
+    assert (
+        "/api/v1/investigations/{investigation_id}/mitigation-approvals/{mitigation_id}"
+        in schema["paths"]
+    )
     error = schema["paths"]["/api/v1/incidents/{incident_id}/timeline"]["get"]["responses"]["422"]
     assert "application/problem+json" in error["content"]
     assert "code" in error["content"]["application/problem+json"]["schema"]["properties"]
