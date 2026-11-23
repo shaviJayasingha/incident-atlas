@@ -29,6 +29,11 @@ postgres-data/
 .netlify/
 .git-step5/
 .codex/
+.agents/
+.aws/
+incident-atlas-release.zip
+incident-atlas-project.zip
+incident-atlas-predeployment-release.zip
 
 # Editor and OS state
 .DS_Store

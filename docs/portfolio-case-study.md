@@ -6,7 +6,7 @@ Incident Atlas is a no-sign-in incident investigation product prepared for a pub
 
 ## Product and architecture
 
-The browser UI uses React, Vite, and TypeScript. FastAPI serves the versioned API and PostgreSQL stores incidents, evidence snapshots, replay reports, investigations, approvals, and audit records. Alembic migrations and deterministic fixture seeding run as a separate deployment step. The API container omits the evaluation labels and runs as a non-root user with a limited database role.
+The browser UI uses React, Vite, and TypeScript. FastAPI serves the versioned API and PostgreSQL stores incidents, evidence snapshots, replay reports, investigations, approvals, and audit records. Alembic migrations and deterministic fixture seeding run as a separate deployment step. The API container omits the evaluation files and runs as a non-root user with table-specific database grants. The runtime role can update only investigation completion, error, usage, provider-request, and uncertainty fields; it cannot mutate seeded incidents, replay reports, immutable evidence, hypotheses, or approvals.
 
 Evidence is bounded to immutable snapshots. Reports record provenance and must cite evidence inside their snapshot. The optional model path is server-side and has no read/write tools; provider output is schema-checked and citation IDs are resolved before a result is shown. Public configuration keeps live AI disabled. A database-backed global request cap and explicit proxy trust configuration must be verified before turning it on.
 
@@ -14,7 +14,7 @@ Stored replay is the no-key path. Its provenance says `stored_replay` and `model
 
 ## Evaluation and limitations
 
-The incident evidence is authored deterministic synthetic data shaped like OpenTelemetry records, not an import from OpenTelemetry Demo or real production telemetry. The project contains three base labels plus nine derived regression cases, including ambiguous expected-abstain cases. After correcting missing citation selection, the rules baseline measured 1.0000 top-1, MRR, and expected-support recall on the three base cases; the nine-case synthetic regression set measured 1.0000 labeled top-1, MRR, expected-support recall, and abstention accuracy. The original 0.5222 support-recall measurement remains recorded in the Step 5/6 history. These tiny fixture results are regression checks, not real-world incident accuracy. No genuine live model result has been verified; provider test coverage is mocked.
+The incident evidence is authored deterministic synthetic data shaped like OpenTelemetry records, not an import from OpenTelemetry Demo or real production telemetry. The offline evaluation contains three base incidents, six derived variants, and three independent authored cases (12 total, with eight positive labels and four expected-abstain labels). The latest local rules evaluation measured 1.0000 labeled top-1, MRR, expected-support recall, abstention accuracy, and overall decision accuracy on this fixed synthetic set; the dataset SHA-256 is `65f6949e8c0c0d2f258fd65c2760591b2ff7b38fbb1edeb38cc3dc16cbac1527`. The original 0.5222 support-recall measurement remains in the historical Step 5/6 reports. These small regression results are not real-world incident accuracy. An OTLP/JSON trace and metric adapter is implemented, but no OpenTelemetry Demo capture was imported or scored. No genuine live model result has been verified; provider test coverage is mocked.
 
 ## Browser screenshots
 
@@ -43,3 +43,5 @@ _Mobile dashboard — 390 px viewport in the local CI browser run._
 ## Release status
 
 Source: [GitHub repository](https://github.com/shaviJayasingha/incident-atlas). The code has CI checks, including a container runtime exercise, but the Netlify site, Render API, and production database have not been provisioned. There is no public demo URL. Deployment requires an approved hosting spending cap and account access; live AI additionally requires proxy-range verification and a genuine server-side provider request. Current evidence and exact gates are in the [pre-deployment release report](predeployment-release-report.md).
+
+The repository currently has no license file; see the [owner decision note](licensing-decision.md). No license was selected on the author's behalf.

@@ -30,7 +30,7 @@ uv run uvicorn incident_atlas.main:app --app-dir . --host 127.0.0.1 --port 8000 
 - OpenAPI JSON and interactive docs: `/openapi.json`, `/docs`
 - Versioned API base: `/api/v1`
 
-The container starts the API without running migrations. Production migrations and runtime seeding run in the Render pre-deploy command with `MIGRATION_DATABASE_URL`; the API receives a separate `DATABASE_URL` for the `incident_atlas_runtime` role. `RUNTIME_DB_PASSWORD` is used to provision or rotate that role, then stripped from the running process. The runtime role can read and write public application tables but cannot read the `evaluation` schema, create schema objects, or update `alembic_version`.
+The container starts the API without running migrations. Production migrations and runtime seeding run in the Render pre-deploy command with a pinned `MIGRATION_DATABASE_URL`; the API receives a separate `DATABASE_URL` for the `incident_atlas_runtime` role. `RUNTIME_DB_PASSWORD` must match the decoded password in `DATABASE_URL`; percent-encode special characters in the URL. The bootstrap verifies the role, connection, migration permissions, and exact table grants, then strips migration credentials from the running process. The runtime role has table-specific reads and writes, cannot mutate seeded incidents, replay reports, immutable evidence, hypotheses, or approvals, cannot read the `evaluation` schema, create schema objects, or update `alembic_version`. It cannot directly delete rate events; an owned `SECURITY DEFINER` function removes only records older than seven days, the maximum supported rate-limit window.
 
 Production requires `PUBLIC_SITE_ORIGIN` to be one exact HTTPS origin and `CORS_ALLOWED_ORIGINS` to match it exactly. `TRUSTED_PROXY_CIDRS` must contain only verified ingress proxy ranges; forwarded headers are ignored unless the direct peer is in that allowlist. The production API refuses to expose live AI unless the global request cap, rate limiting, trusted proxy setup, a server-side key, and the manual provider-verification flag are all present. The checked-in deployment config keeps live AI off.
 
@@ -43,7 +43,7 @@ uv run python -m incident_atlas.cli evaluate-fixtures
 uv run python -m incident_atlas.cli evaluate-expanded
 ```
 
-These are regression checks on authored synthetic data, not real-world incident accuracy. Do not run `seed-evaluation` against a production database.
+These are regression checks on authored synthetic data, not real-world incident accuracy. Current coverage is three base cases, six derived variants, and three independent authored cases; no imported OpenTelemetry Demo capture has been scored. Do not run `seed-evaluation` against a production database. The offline [OTLP/JSON adapter](incident_atlas/otel_demo_import.py) can be run from this package via `python -m incident_atlas.otel_demo_import` after following the [import guide](../docs/otel-demo-import.md).
 
 ## Tests and checks
 

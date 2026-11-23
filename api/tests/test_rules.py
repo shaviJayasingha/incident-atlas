@@ -26,7 +26,7 @@ def test_rules_baseline_is_deterministic_and_scores_all_base_cases():
             parse_dt(scenario["started_at"]),
             build_evidence_items(scenario),
         )["version"]
-        == "rules-v2"
+        == "rules-v3"
         for scenario in load_json(SCENARIOS_PATH)["scenarios"]
     )
 

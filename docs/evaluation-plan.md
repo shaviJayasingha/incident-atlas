@@ -1,17 +1,15 @@
 # Evaluation, test, security, and operating-cost plan
 
-**Status:** Step 6 regression dataset and test plan
+**Status:** Current deterministic regression plan; no live model quality result
 **Reviewed:** 2026-11-22
 
-## Step 1 blueprint status
+## Evaluation status
 
-No application or model evaluation has been run in Step 1 because the inspected workspace contained no implementation. This blueprint records the dataset, reproducible expected outcomes, baseline rules, metrics, gates, and a Step 2 handoff report requirement. It intentionally does not present invented AI scores as measured results.
-
-Step 2 now includes the three base fixtures, an offline rules evaluator, provider parser tests, and a PostgreSQL integration suite. See the [backend handoff](backend-handoff.md) for measured baseline numbers and checks blocked by the sandbox. No AI accuracy score is claimed.
+The repository includes a deterministic rules evaluator and an offline labeled dataset. The API image excludes the evaluation schema data, and live model input is built only from public runtime evidence. Provider tests are mocked; no genuine live model quality result is available. See the current pre-deployment release report for the exact commit and observed CI run.
 
 ## Evaluation dataset
 
-The canonical dataset has three deterministic synthetic cases defined in [incident scenarios](incident-scenarios.md). Step 6's 9-case regression set adds three severity-shifted positives and three intentionally ambiguous cases where rules should abstain. The named transforms and their labels live in `data/evaluation/variants.json`; they do not alter public runtime fixtures or model input. The set has six labeled positive cases and three abstention cases. It is regression coverage, not a representative estimate of real incident accuracy.
+The current rules regression set has 12 cases: three authored synthetic base cases, six derived synthetic variants, and three independent authored synthetic cases. The six derived variants and their labels live in `data/evaluation/variants.json`; they do not alter public runtime fixtures or model input. The independent queue-lag, CPU-throttling, and ambiguous shipping-span cases live in `data/evaluation/independent-cases-v1.json`. Eight cases have a positive expected label and four expect abstention. These are small regression cases, not a representative estimate of real incident accuracy. No case is an OpenTelemetry Demo import; the separate [import guide](otel-demo-import.md) documents an executable, currently unverified capture path.
 
 ## Rules baseline
 
@@ -24,22 +22,24 @@ Implement a transparent, deterministic rules ranker against the exact same froze
 - Cache mismatch: hit ratio drops by ≥50 percentage points after a deploy marker and DB p95 rises ≥3×.
 - Pool exhaustion: connection use reaches ≥95%, acquisition wait exceeds 500 ms, and DB query p95 remains <2× baseline.
 - Upstream payment slowdown: downstream span exceeds the configured deadline, parent timeout rate rises, retries increase, and local DB p95 remains stable.
+- Queue-consumer lag: lag rises against its baseline while producers outpace a sharply reduced consumer rate.
+- Checkout CPU throttling: throttling rises materially against its baseline alongside a threefold checkout latency increase.
 
 Rule behavior follows these deterministic conditions:
 
 ## Metrics and initial release gates
 
-Report aggregate and per-case metrics; with only nine cases, treat them as regression checks, not a statistically representative benchmark.
+Report aggregate and per-case metrics; with only twelve authored cases, treat them as regression checks, not a statistically representative benchmark.
 
 | Metric | Definition | Initial gate |
 |---|---|---:|
-| Labeled top-1 | Fraction of the six positive cases whose first label matches expected cause. | 6/6 regression cases; do not score abstention cases as positive root-cause predictions. |
-| Overall decision accuracy | Positive cases correctly labeled plus abstention cases where no rule fires, divided by all nine cases. | 9/9 regression cases; never score a forced guess as success when `expected_abstention=true`. |
+| Labeled top-1 | Fraction of the eight positive cases whose first label matches expected cause. | 8/8 regression cases; do not score abstention cases as positive root-cause predictions. |
+| Overall decision accuracy | Positive cases correctly labeled plus abstention cases where no rule fires, divided by all twelve cases. | 12/12 regression cases; never score a forced guess as success when `expected_abstention=true`. |
 | Mean reciprocal rank (MRR) | Mean `1 / rank` for the first acceptable label. | ≥0.80. |
 | Evidence citation precision | Relevant, real, snapshot-valid cited evidence IDs divided by all cited IDs. | 100% valid IDs; ≥0.90 relevant. |
 | Evidence citation recall | Expected key support IDs cited divided by the expected evidence ID set. | 100% on these fixed positives; report per case and preserve missing IDs. |
 | Unsupported causal assertion rate | Causal claims without a linked supporting signal divided by all causal claims. | 0 in reviewed release cases. |
-| Abstention behavior | Fraction of ambiguous cases where no cause label is emitted. | 3/3 on this fixed regression set. |
+| Abstention behavior | Fraction of ambiguous cases where no cause label is emitted. | 4/4 on this fixed regression set. |
 | Schema and refusal handling | Provider outcomes that are validated or surfaced as explicit refusal/error without malformed report. | 100%. |
 | Latency | End-to-end live request p95 under fixed fixture/model configuration. | ≤18 seconds API deadline; record provider and DB components. |
 | Cost | Actual model token cost per successful live run. | Enforce per-run token caps; monthly alert at chosen budget. |
@@ -51,13 +51,12 @@ Do not describe qualitative confidence as calibrated. If a later version adds nu
 
 Step 1 adds no executable tests. Later implementation should add tests in this order:
 
-1. **Fixture/data tests:** deterministic seed and snapshot hashes; foreign keys and constraints; ground-truth exclusion from runtime evidence packet.
-2. **API contract tests:** route schemas, pagination/filter bounds, problem responses, rate limits, idempotency, and exact CORS behavior.
-3. **Investigation unit tests:** bounded query pack, timeout handling, structured-output validation, refusal/incomplete output, unknown evidence ID rejection, mandatory uncertainty, and no arbitrary tool execution.
+1. **PostgreSQL-backed integration tests:** repeatable migration/seeding, report evidence resolution, runtime table and column grants, evaluation-label isolation, persisted simulation approvals, live failure modes, rate-cap concurrency, and public replay read behavior.
+2. **API and investigation tests:** route schemas, bounded queries, stable errors, bounded live packet, timeout/refusal/malformed output, invalid evidence IDs, mandatory uncertainty, and no arbitrary tool execution.
+3. **Evaluation tests:** base, derived, independent, and expected-abstention cases; per-case labels and support evidence recall; importer parser/redaction tests on a synthetic OTLP sample.
 4. **Security boundary tests:** no API key in the client bundle or responses; approval only appends simulation rows; no route reaches an external target; prompt-like text inside logs is treated as data.
-5. **Scenario/evaluation tests:** replay evidence links resolve; rules labels match the scenario; live outputs compare to labels and metrics above; clue-removal cases reduce confidence.
-6. **Browser journey tests:** recruiter reaches a replay and approves a simulation without login or a visitor key; live-off mode remains transparent; keyboard and responsive interactions work.
-7. **Deployment smoke checks:** health, migration/seed, replay, optional live run, simulated approval, and kill switch on a preview deployment.
+5. **Browser journey tests:** visitor opens a replay, follows evidence, and approves a simulation without login or a visitor key; live-off and error states remain clear; keyboard and responsive behavior work.
+6. **Deployment checks:** API image runtime with PostgreSQL, health and replay paths, configuration guards, and a post-deployment command for exact origin, bundle URL, JSON responses, and browser CORS.
 
 Keep deterministic CI independent of the live model provider. A separate, explicitly budgeted scheduled/manual model evaluation can test live quality; it must not run on every pull request.
 
@@ -87,7 +86,7 @@ Monthly total is approximately:
 
 `static hosting + API compute + managed database/storage/transfer + live model token usage`.
 
-Current planning snapshot: Netlify Free can host a static site within usage credits; Render's low-end service plus smallest listed PostgreSQL plan was about $7 + $6 = $13/month before add-ons and usage. Exact charges depend on region, storage, transfer, and current plan rules. Live inference cost is:
+Do not use an old price snapshot as an approved budget. Check the current Render and Netlify account quotes, billing setup, plan limits, backup/storage costs, and usage terms when the account owner sets the spending cap. Live inference cost is:
 
 `(input_tokens × current_input_rate + output_tokens × current_output_rate) / 1,000,000`
 
@@ -95,7 +94,7 @@ per run, with rates checked against the configured provider/model at launch. Rep
 
 ## Reporting results
 
-Publish a compact methodology result table with evaluation version/date, model ID, prompt/schema version, run count, the rules baseline scores, AI scores, failure count, and known limitations. Record raw metrics as CI artifacts for reproducibility. Never present a 9-case score as production readiness or a guarantee of root-cause accuracy.
+Publish a compact methodology result table with evaluation version/date, source counts, model ID, prompt/schema version, run count, rules baseline scores, any genuine AI scores, failure count, and limitations. Record raw metrics as CI artifacts for reproducibility. Never present a twelve-case score as production readiness or a guarantee of root-cause accuracy. Keep authored synthetic data, imported OpenTelemetry Demo captures, mocked provider tests, and genuine live-model output in separate result categories.
 
 ## Current reference sources for cost and integration choices
 

@@ -93,7 +93,7 @@ All telemetry responses include `evidence_id`, `kind`, `service_id`, `observed_a
     }
   ],
   "rules_baseline": {
-    "version": "rules-v2",
+    "version": "rules-v3",
     "ranked_labels": ["cache_miss_after_release_signal"],
     "fired_rules": [{
       "rule_id": "cache-miss-after-deploy",

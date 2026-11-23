@@ -160,6 +160,287 @@ def test_runtime_role_cannot_read_evaluation_or_run_migrations(clean_postgres):
         runtime_engine.dispose()
 
 
+def test_runtime_role_has_only_required_table_operations(clean_postgres):
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+
+    from incident_atlas.deployment import _provision_role, apply_runtime_grants
+
+    with SessionLocal() as db:
+        seed_runtime(db)
+
+    role_name = "incident_atlas_runtime_ci"
+    with engine.begin() as connection:
+        _provision_role(connection, "ci-runtime-password", role_name)
+        apply_runtime_grants(connection, role_name)
+
+    admin_url = make_url(os.environ["DATABASE_URL"])
+    runtime_url = admin_url.set(
+        drivername="postgresql+psycopg",
+        username=role_name,
+        password="ci-runtime-password",
+    )
+    runtime_engine = create_engine(runtime_url)
+    now = datetime.now(UTC)
+    snapshot_id = "snap-permission-matrix-ci"
+    investigation_id = "inv-permission-matrix-ci"
+    hypothesis_id = "hyp-permission-matrix-ci"
+    try:
+        with runtime_engine.begin() as connection:
+            assert connection.scalar(
+                text("SELECT has_table_privilege(current_user, 'public.incidents', 'SELECT')")
+            )
+            assert not connection.scalar(
+                text("SELECT has_table_privilege(current_user, 'public.incidents', 'UPDATE')")
+            )
+            assert not connection.scalar(
+                text("SELECT has_table_privilege(current_user, 'public.replay_reports', 'DELETE')")
+            )
+            assert not connection.scalar(
+                text(
+                    "SELECT has_table_privilege(current_user, 'public.guest_rate_events', 'DELETE')"
+                )
+            )
+            assert connection.scalar(
+                text(
+                    "SELECT has_function_privilege(current_user, "
+                    "'public.prune_expired_guest_rate_events()', 'EXECUTE')"
+                )
+            )
+            assert not connection.scalar(
+                text(
+                    "SELECT has_table_privilege(current_user, "
+                    "'public.simulation_approvals', 'UPDATE')"
+                )
+            )
+            assert not connection.scalar(
+                text(
+                    "SELECT has_table_privilege(current_user, "
+                    "'public.evidence_snapshots', 'UPDATE')"
+                )
+            )
+            assert connection.scalar(
+                text(
+                    "SELECT has_column_privilege(current_user, 'public.investigations', "
+                    "'status', 'UPDATE')"
+                )
+            )
+            assert not connection.scalar(
+                text(
+                    "SELECT has_column_privilege(current_user, 'public.investigations', "
+                    "'model_id', 'UPDATE')"
+                )
+            )
+
+            connection.execute(
+                text(
+                    "INSERT INTO public.evidence_snapshots "
+                    "(id, incident_id, fixture_version, created_at, window_start, window_end, "
+                    "sha256, item_count, payload_version) VALUES "
+                    "(:id, :incident, '1.0.0', :now, :start, :end, :hash, 1, 'v1')"
+                ),
+                {
+                    "id": snapshot_id,
+                    "incident": "inc-cache-collapse-001",
+                    "now": now,
+                    "start": now - timedelta(minutes=1),
+                    "end": now,
+                    "hash": "0" * 64,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO public.snapshot_evidence "
+                    "(snapshot_id, evidence_id, kind, source_record_id, observed_at, payload) "
+                    "VALUES (:snapshot, 'ev-permission-matrix-ci', 'log', 'log-ci', :now, '{}')"
+                ),
+                {"snapshot": snapshot_id, "now": now},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO public.investigations "
+                    "(id, incident_id, status, snapshot_id, model_id, prompt_version, "
+                    "schema_version, started_at) VALUES "
+                    "(:id, 'inc-cache-collapse-001', 'running', :snapshot, 'model', "
+                    "'prompt-v1', 'schema-v1', :now)"
+                ),
+                {"id": investigation_id, "snapshot": snapshot_id, "now": now},
+            )
+            connection.execute(
+                text(
+                    "UPDATE public.investigations SET status='failed', completed_at=:now, "
+                    "error_code='test' WHERE id=:id"
+                ),
+                {"id": investigation_id, "now": now},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO public.hypotheses "
+                    "(id, investigation_id, rank, statement, confidence, confidence_note, "
+                    "supporting_evidence_ids, contradicting_evidence_ids, next_read_only_check, "
+                    "mitigation_id, mitigation_summary) VALUES "
+                    "(:id, :investigation, 1, 'synthetic claim', 'medium', 'uncertain', "
+                    "'[]', '[]', 'check again', 'mit-ci', 'simulate mitigation')"
+                ),
+                {"id": hypothesis_id, "investigation": investigation_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO public.simulation_approvals "
+                    "(id, investigation_id, hypothesis_id, mitigation_id, status, "
+                    "simulation_only, external_action_performed, recorded_at, request_id) "
+                    "VALUES ('approval-permission-matrix-ci', :investigation, :hypothesis, "
+                    "'mit-ci', 'simulated_approved', true, false, :now, :request_id)"
+                ),
+                {
+                    "investigation": investigation_id,
+                    "hypothesis": hypothesis_id,
+                    "now": now,
+                    "request_id": "a" * 64,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO public.audit_events "
+                    "(id, occurred_at, action, entity_type, entity_id, request_id, attributes) "
+                    "VALUES ('audit-permission-matrix-ci', :now, 'test', 'test', 'test', "
+                    ":request_id, '{}')"
+                ),
+                {"now": now, "request_id": "b" * 64},
+            )
+            rate_id = connection.scalar(
+                text(
+                    "INSERT INTO public.guest_rate_events (subject_hash, action) "
+                    "VALUES (:subject, 'approval') RETURNING id"
+                ),
+                {"subject": "c" * 64},
+            )
+            assert connection.scalar(
+                text("SELECT public.prune_expired_guest_rate_events()")
+            ) == 0
+            assert connection.scalar(
+                text("SELECT count(*) FROM public.guest_rate_events WHERE id=:id"),
+                {"id": rate_id},
+            ) == 1
+
+        denied_mutations = (
+            "UPDATE public.incidents SET summary=summary WHERE id='inc-cache-collapse-001'",
+            "DELETE FROM public.incidents WHERE id='inc-cache-collapse-001'",
+            "UPDATE public.replay_reports SET rules_version=rules_version "
+            "WHERE id='replay-cache-v1'",
+            "DELETE FROM public.replay_reports WHERE id='replay-cache-v1'",
+            f"UPDATE public.evidence_snapshots SET item_count=item_count WHERE id='{snapshot_id}'",
+            f"DELETE FROM public.evidence_snapshots WHERE id='{snapshot_id}'",
+            f"UPDATE public.snapshot_evidence SET payload=payload "
+            f"WHERE snapshot_id='{snapshot_id}'",
+            f"DELETE FROM public.snapshot_evidence WHERE snapshot_id='{snapshot_id}'",
+            f"UPDATE public.hypotheses SET statement=statement WHERE id='{hypothesis_id}'",
+            f"DELETE FROM public.hypotheses WHERE id='{hypothesis_id}'",
+            f"UPDATE public.investigations SET model_id=model_id WHERE id='{investigation_id}'",
+            "UPDATE public.simulation_approvals SET status=status "
+            "WHERE id='approval-permission-matrix-ci'",
+            "DELETE FROM public.simulation_approvals "
+            "WHERE id='approval-permission-matrix-ci'",
+            "UPDATE public.audit_events SET action=action "
+            "WHERE id='audit-permission-matrix-ci'",
+            "DELETE FROM public.audit_events WHERE id='audit-permission-matrix-ci'",
+            f"DELETE FROM public.guest_rate_events WHERE id='{rate_id}'",
+            "UPDATE public.guest_rate_events SET action=action WHERE false",
+        )
+        for statement in denied_mutations:
+            with pytest.raises(DBAPIError):
+                with runtime_engine.begin() as connection:
+                    connection.execute(text(statement))
+    finally:
+        runtime_engine.dispose()
+
+
+def test_bootstrap_preflight_reports_managed_database_privilege_blockers(clean_postgres):
+    from incident_atlas.deployment import _preflight_migration_permissions, _provision_role
+
+    limited_role = "incident_atlas_migration_limited_ci"
+    runtime_role = "incident_atlas_runtime_missing_ci"
+    secret = "must-never-appear-in-an-error"
+    with engine.begin() as connection:
+        connection.exec_driver_sql(f"CREATE ROLE {limited_role} LOGIN")
+        try:
+            connection.exec_driver_sql(f"SET ROLE {limited_role}")
+            with pytest.raises(RuntimeError, match="lacks database/schema creation privileges"):
+                _preflight_migration_permissions(connection)
+            with pytest.raises(RuntimeError, match="cannot create the runtime role") as error:
+                _provision_role(connection, secret, runtime_role)
+            assert secret not in str(error.value)
+        finally:
+            connection.exec_driver_sql("RESET ROLE")
+            connection.exec_driver_sql(f"DROP ROLE IF EXISTS {limited_role}")
+
+
+def test_precreated_runtime_credential_does_not_require_createrole(clean_postgres):
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+
+    from incident_atlas.deployment import _provision_role
+
+    migration_role = "incident_atlas_migration_nocreate_ci"
+    runtime_role = "incident_atlas_runtime_managed_ci"
+    runtime_password = "managed-runtime-password"
+    with engine.begin() as connection:
+        connection.exec_driver_sql(f"CREATE ROLE {migration_role} LOGIN")
+        connection.exec_driver_sql(
+            f"CREATE ROLE {runtime_role} LOGIN PASSWORD '{runtime_password}' "
+            "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+        )
+        try:
+            connection.exec_driver_sql(f"SET ROLE {migration_role}")
+            _provision_role(connection, "must-not-rotate-managed-password", runtime_role)
+        finally:
+            connection.exec_driver_sql("RESET ROLE")
+
+    base_url = make_url(os.environ["DATABASE_URL"])
+    runtime_url = base_url.set(
+        drivername="postgresql+psycopg", username=runtime_role, password=runtime_password
+    )
+    runtime_engine = create_engine(runtime_url)
+    try:
+        with runtime_engine.connect() as connection:
+            assert connection.scalar(text("SELECT current_user")) == runtime_role
+    finally:
+        runtime_engine.dispose()
+        with engine.begin() as connection:
+            connection.exec_driver_sql(f"DROP ROLE IF EXISTS {runtime_role}")
+            connection.exec_driver_sql(f"DROP ROLE IF EXISTS {migration_role}")
+
+
+def test_grant_preflight_fails_clearly_when_migration_user_is_not_object_owner(clean_postgres):
+    from psycopg import sql
+
+    from incident_atlas.deployment import preflight_and_apply_runtime_grants
+
+    migration_role = "incident_atlas_migration_nogrant_ci"
+    runtime_role = "incident_atlas_runtime_nogrant_ci"
+    with engine.begin() as connection:
+        connection.exec_driver_sql(f"CREATE ROLE {migration_role} LOGIN")
+        connection.exec_driver_sql(
+            f"CREATE ROLE {runtime_role} LOGIN PASSWORD 'grant-test-password' "
+            "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+        )
+        database_name = connection.execute(text("SELECT current_database()")).scalar_one()
+        connection.connection.driver_connection.execute(
+            sql.SQL("GRANT CREATE ON DATABASE {} TO {}").format(
+                sql.Identifier(database_name), sql.Identifier(migration_role)
+            )
+        )
+        connection.exec_driver_sql(f"GRANT USAGE, CREATE ON SCHEMA public TO {migration_role}")
+        try:
+            connection.exec_driver_sql(f"SET ROLE {migration_role}")
+            with pytest.raises(RuntimeError, match="cannot apply the required runtime grants"):
+                preflight_and_apply_runtime_grants(connection, runtime_role)
+        finally:
+            connection.exec_driver_sql("RESET ROLE")
+            connection.exec_driver_sql(f"DROP ROLE IF EXISTS {runtime_role}")
+            connection.exec_driver_sql(f"DROP ROLE IF EXISTS {migration_role}")
+
+
 def test_public_api_contract_hidden_labels_and_replay_evidence(pg_client, monkeypatch):
     def should_not_call_model(*args, **kwargs):
         raise AssertionError("stored replay must not call the live provider")
@@ -343,7 +624,14 @@ def test_rate_event_retention_cleanup_is_indexed_and_window_safe(pg_client):
             GuestRateEvent(
                 subject_hash="b" * 64,
                 action="live",
-                occurred_at=datetime.now(UTC) - timedelta(days=2),
+                occurred_at=datetime.now(UTC) - timedelta(days=8),
+            )
+        )
+        db.add(
+            GuestRateEvent(
+                subject_hash="d" * 64,
+                action="live",
+                occurred_at=datetime.now(UTC) - timedelta(days=6),
             )
         )
         db.commit()
@@ -367,7 +655,7 @@ def test_rate_event_retention_cleanup_is_indexed_and_window_safe(pg_client):
         json={"incident_id": "inc-cache-collapse-001", "evidence_window_minutes": 15},
     )
     with SessionLocal() as db:
-        assert db.scalar(select(func.count()).select_from(GuestRateEvent)) == 1
+        assert db.scalar(select(func.count()).select_from(GuestRateEvent)) == 2
 
 
 def test_global_live_request_cap_survives_rotating_client_addresses(pg_client, monkeypatch):
