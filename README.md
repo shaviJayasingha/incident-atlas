@@ -4,6 +4,8 @@ Incident Atlas is a no-sign-in incident investigation demo. Visitors can inspect
 
 **Release status:** The source repository and CI are public. The website, API, and PostgreSQL database have not been deployed. There is no live public demo URL. Hosting remains gated on an approved spending cap and account access. Live AI remains disabled until proxy trust, global request limits, and a genuine provider request are verified.
 
+**Verified application revision:** [`b8168985fe2bd7fec807d6691f98824b0f9b4f46`](https://github.com/shaviJayasingha/incident-atlas/commit/b8168985fe2bd7fec807d6691f98824b0f9b4f46), with [GitHub Actions run #24 passing](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45122787848). The release report records the exact checks, synthetic dataset hash, local skips, and deployment blockers.
+
 ## Case study and source
 
 - [Portfolio case study and application screenshots](docs/portfolio-case-study.md)
