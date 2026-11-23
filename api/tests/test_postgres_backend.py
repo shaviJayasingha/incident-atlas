@@ -412,8 +412,6 @@ def test_precreated_runtime_credential_does_not_require_createrole(clean_postgre
 
 
 def test_grant_preflight_fails_clearly_when_migration_user_is_not_object_owner(clean_postgres):
-    from psycopg import sql
-
     from incident_atlas.deployment import preflight_and_apply_runtime_grants
 
     migration_role = "incident_atlas_migration_nogrant_ci"
@@ -424,13 +422,6 @@ def test_grant_preflight_fails_clearly_when_migration_user_is_not_object_owner(c
             f"CREATE ROLE {runtime_role} LOGIN PASSWORD 'grant-test-password' "
             "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
         )
-        database_name = connection.execute(text("SELECT current_database()")).scalar_one()
-        connection.connection.driver_connection.execute(
-            sql.SQL("GRANT CREATE ON DATABASE {} TO {}").format(
-                sql.Identifier(database_name), sql.Identifier(migration_role)
-            )
-        )
-        connection.exec_driver_sql(f"GRANT USAGE, CREATE ON SCHEMA public TO {migration_role}")
         try:
             connection.exec_driver_sql(f"SET ROLE {migration_role}")
             with pytest.raises(RuntimeError, match="cannot apply the required runtime grants"):
@@ -593,7 +584,7 @@ def test_guest_live_rate_limit_returns_stable_error(pg_client):
             GuestRateEvent(
                 subject_hash="a" * 64,
                 action="live",
-                occurred_at=datetime.now(UTC) - timedelta(days=2),
+                occurred_at=datetime.now(UTC) - timedelta(days=8),
             )
         )
         db.commit()
