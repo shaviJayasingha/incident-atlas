@@ -5,6 +5,19 @@
 
 **Release-candidate source revision:** [`b5eceed9c087b19dafcf377cded164dbaffe18cc`](https://github.com/shaviJayasingha/incident-atlas/commit/b5eceed9c087b19dafcf377cded164dbaffe18cc) in [PR #5](https://github.com/shaviJayasingha/incident-atlas/pull/5); [CI run #28 passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45147520680). PostgreSQL grants and container startup passed in GitHub-hosted CI against PostgreSQL 17. The actual Render managed-database preflight has not run; its role privileges remain an explicit deployment gate. No production host has been provisioned.
 
+## Deployment sequence
+
+```mermaid
+flowchart TD
+  A["Approve budget and account access"] --> B["Reserve the Netlify origin"]
+  B --> C["Provision Render PostgreSQL and pin migration URL"]
+  C --> D["Create runtime role, migrate, seed, and start the API"]
+  D --> E["Build and publish Netlify with the API URL and exact CORS origin"]
+  E --> F["Check both origins and walk the replay on desktop and mobile"]
+```
+
+This order reserves the site origin before configuring API CORS, then waits for the API hostname before building the static frontend.
+
 ## Local Docker Compose
 
 From the repository root:
