@@ -1,13 +1,13 @@
 # Incident Atlas release report
 
 **Reviewed:** 2026-11-23  
-**Release-candidate source revision:** [`b5eceed9c087b19dafcf377cded164dbaffe18cc`](https://github.com/shaviJayasingha/incident-atlas/commit/b5eceed9c087b19dafcf377cded164dbaffe18cc), proposed by [PR #5](https://github.com/shaviJayasingha/incident-atlas/pull/5).  
-**Full CI run for this source revision:** [Run #28 — passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45147520680); all five jobs succeeded.  
+**Release-candidate source revision:** [`33b3356f42a9543ef70823acac1b387884e9f2c8`](https://github.com/shaviJayasingha/incident-atlas/commit/33b3356f42a9543ef70823acac1b387884e9f2c8), proposed by [PR #5](https://github.com/shaviJayasingha/incident-atlas/pull/5).  
+**Full CI run for this source revision:** [Run #30 — passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45149721338); all five jobs succeeded.  
 **Repository:** [shaviJayasingha/incident-atlas](https://github.com/shaviJayasingha/incident-atlas)  
 **Hosting status:** pre-deployment; no public URL exists.  
 **Release ZIP:** CI generates a tracked-source archive and SHA-256 sidecar for the tested commit and uploads both as a 14-day workflow artifact. The final-tree artifact is available from the latest successful PR validation run; it is checked against the Git tree as part of that job.
 
-This report distinguishes the release-candidate source revision from the still-unmerged `main` branch. The linked run verifies the current source and archive. The application changes were first checked in run #27; run #28 reran the gates after refreshing report references and the tracked approval screenshot. Earlier reports and measurements remain historical; they do not replace these results.
+This report distinguishes the release-candidate source revision from the still-unmerged `main` branch. The linked run verifies the current source and archive. The application changes were first checked in run #27; run #30 reran the gates after the report/screenshot refresh and added the missing deployment diagram plus current database-permission notes. Earlier reports and measurements remain historical; they do not replace these results.
 
 ## Release status
 
@@ -17,7 +17,7 @@ The replay journey is designed to work without a visitor account or model key. `
 
 ## Verification of the release candidate
 
-GitHub Actions run #28 completed successfully for the source tree in PR #5. All five jobs passed. The workflow artifact was built from GitHub's PR merge commit; its Git tree is identical to the PR head tree.
+GitHub Actions run #30 completed successfully for the source tree in PR #5. All five jobs passed. The workflow artifact was built from GitHub's PR merge commit; its Git tree is identical to the PR head tree.
 
 | Gate | Observed result |
 |---|---|
@@ -58,7 +58,7 @@ The current rules-regression dataset is **12 project-authored synthetic cases**:
 
 `65f6949e8c0c0d2f258fd65c2760591b2ff7b38fbb1edeb38cc3dc16cbac1527`
 
-CI run #28 measured 1.0000 labeled top-1, 1.0000 mean reciprocal rank, 1.0000 expected-support evidence recall, 1.0000 abstention accuracy, and 1.0000 overall decision accuracy on this fixed dataset. These are **synthetic regression results**, not real-world incident accuracy. The earlier 0.5222 support-recall measurement belongs to the historical Step 5/6 evaluation; the present score is tied to the dataset hash above and should not be generalized beyond it.
+CI run #30 measured 1.0000 labeled top-1, 1.0000 mean reciprocal rank, 1.0000 expected-support evidence recall, 1.0000 abstention accuracy, and 1.0000 overall decision accuracy on this fixed dataset. These are **synthetic regression results**, not real-world incident accuracy. The earlier 0.5222 support-recall measurement belongs to the historical Step 5/6 evaluation; the present score is tied to the dataset hash above and should not be generalized beyond it.
 
 The executable OTLP/JSON importer is covered by a synthetic parser fixture only. There is no verified OpenTelemetry Demo version, scenario capture, imported-data hash, label, or Demo evaluation result. Keep all public scenario provenance labeled authored synthetic.
 
