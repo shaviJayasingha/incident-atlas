@@ -19,7 +19,7 @@ The demo uses fixed, synthetic incidents. A live AI run is a fresh model inferen
 6. Review ranked hypotheses. Each hypothesis shows a plain-language explanation, uncertainty label, evidence that supports it, evidence that weakens it, and a safe next check. Evidence links open the matching timeline or telemetry item.
 7. Review a suggested mitigation as a proposal. Select **Approve simulated mitigation**, read a confirmation that no service will be changed, and confirm. The app records a simulation approval event and displays “Simulation recorded; no system was changed.”
 8. After reloading the mitigation page, the same anonymous browser sees its persisted simulation. A separate browser sharing the same public IP can record its own simulation without seeing the other browser's approval.
-8. Visit **Methodology & evaluation** to see how synthetic scenarios are generated, what “live” means in this demo, and how the system is evaluated.
+9. Visit **Methodology & evaluation** to see how synthetic scenarios are generated, what “live” means in this demo, and how the system is evaluated.
 
 ## Pages and routes
 

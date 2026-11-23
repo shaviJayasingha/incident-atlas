@@ -1,13 +1,13 @@
 # Incident Atlas release report
 
 **Reviewed:** 2026-11-23  
-**Application revision verified:** [`b8168985fe2bd7fec807d6691f98824b0f9b4f46`](https://github.com/shaviJayasingha/incident-atlas/commit/b8168985fe2bd7fec807d6691f98824b0f9b4f46)  
-**Full CI run for this application revision:** [Run #24 — passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45122787848)  
+**Release-candidate application revision:** [`8f7b31fbceb34ec45724916b0dd493f99c68bc80`](https://github.com/shaviJayasingha/incident-atlas/commit/8f7b31fbceb34ec45724916b0dd493f99c68bc80), proposed by [PR #5](https://github.com/shaviJayasingha/incident-atlas/pull/5).  
+**Full CI run for this application revision:** [Run #27 — passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45145232854); all five jobs succeeded.  
 **Repository:** [shaviJayasingha/incident-atlas](https://github.com/shaviJayasingha/incident-atlas)  
 **Hosting status:** pre-deployment; no public URL exists.  
-**Release ZIP:** generated from the tracked source tree after this report refresh; its application code matches the verified revision above. The ZIP and SHA-256 sidecar are distributed separately.
+**Release ZIP:** CI generates a tracked-source archive and SHA-256 sidecar for the tested commit and uploads both as a 14-day workflow artifact. The final-tree artifact is available from the latest successful PR validation run; it is checked against the Git tree as part of that job.
 
-This is the current verification summary for the source revision above. Earlier reports and measurements remain historical; they do not replace these results.
+This report distinguishes the release-candidate application revision from the still-unmerged `main` branch. The code change is verified by the linked PR run; a follow-up report/screenshot refresh reruns the same gates against the updated source tree before the PR is ready to merge. Earlier reports and measurements remain historical; they do not replace these results.
 
 ## Release status
 
@@ -15,20 +15,20 @@ The repository and CI are public. The Netlify site, Render API, and managed Post
 
 The replay journey is designed to work without a visitor account or model key. `LIVE_ANALYSIS_ENABLED=false`; no genuine model request or provider-backed quality result has been verified. No OpenTelemetry Demo capture has been imported or evaluated. The repository has no license because the owner has not selected one; see [licensing-decision.md](licensing-decision.md).
 
-## Verification on commit b816898
+## Verification of the release candidate
 
-GitHub Actions run #24 completed successfully on the commit above. All five jobs passed.
+GitHub Actions run #27 completed successfully for the code tree in PR #5. All five jobs passed. The workflow artifact was built from GitHub's PR merge commit; its Git tree is identical to the PR head tree.
 
 | Gate | Observed result |
 |---|---|
 | PostgreSQL 17 migrations and repeat seeding | Passed. CI ran Alembic migrations and ran runtime seeding and fixture-manifest generation twice; both output pairs matched. |
 | Backend suite | **65 passed** against PostgreSQL 17; no PostgreSQL skips in CI. Includes runtime grant allow/deny checks, bounded seven-day rate cleanup, migration/bootstrap preflight, persisted approvals, and replay/evidence behavior. |
 | Python lint and dependency audit | `uv run ruff check .` passed. `uv audit --locked` found no known vulnerabilities or adverse statuses in 62 packages. |
-| Frontend tests and types | **11/11 tests passed**; `npm run typecheck` passed. |
+| Frontend tests and types | **13/13 tests passed**; `npm run typecheck` passed. Tests cover approval read-back and stable anonymous browser identity across reload. |
 | Production frontend build and dependency audit | Build passed with the explicit CI-only reserved `.invalid` API URL. Missing and reserved production URLs were rejected in dedicated checks. `npm audit --audit-level=moderate` found 0 vulnerabilities; the built bundle credential-marker scan passed. |
 | API image and runtime | Docker build passed; evaluation answer-key files were absent. With production-shaped PostgreSQL URLs, migration/bootstrap, runtime-role startup, readiness, stored replay, evidence resolution, and persisted simulated approval passed. Approval response had `simulation_only=true` and `external_action_performed=false`. |
-| Browser walkthrough | Playwright passed against local CI Vite, FastAPI, and PostgreSQL services: desktop replay, evidence navigation, persisted approval, 390 px mobile layout, and keyboard focus. This is not a public-site walkthrough. [Run #24 screenshot artifact](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45122787848/artifacts/14793888268). |
-| Release archive | CI inspected a 102-file tracked-source ZIP; ZIP integrity and exclusion checks passed. The fresh archive delivered with this report is checked against the remote tree for its documentation-refresh revision, with the same application code revision above. |
+| Browser walkthrough | Playwright passed against local CI Vite, FastAPI, and PostgreSQL services: desktop and mobile replay, every citation, persisted approval after reload, a second browser sharing the same IP, no horizontal overflow, and keyboard focus. This is not a public-site walkthrough. [Run #27 screenshot artifact](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45145232854/artifacts/14804016664). |
+| Release archive | CI inspected a **106-file** tracked-source ZIP, checked ZIP integrity/exclusions and uploaded the ZIP plus SHA-256 sidecar as a commit-scoped artifact. The release job compares every archived path and blob to the tested Git tree. The final report/screenshot refresh triggers the same check again. |
 
 ### Commands represented by CI
 
@@ -42,7 +42,7 @@ uv run python -m incident_atlas.cli evaluate-fixtures
 uv run python -m incident_atlas.cli evaluate-expanded
 ```
 
-The frontend job ran `npm ci`, `npm test`, `npm run typecheck`, the production API configuration failure checks, `npm run build`, `npm audit --audit-level=moderate`, and the browser-bundle secret-marker scan. The container job built and ran the API image with PostgreSQL. The browser job ran the local Playwright visitor journey. The archive job ran:
+The frontend job ran `npm ci`, `npm test` (13 tests), `npm run typecheck`, the production API configuration failure checks, `npm run build`, `npm audit --audit-level=moderate`, and the browser-bundle secret-marker scan. The container job built and ran the API image with PostgreSQL. The browser job ran the local Playwright visitor journey. The archive job ran:
 
 ```bash
 python scripts/build_release_zip.py --output "$RUNNER_TEMP/incident-atlas-release.zip"
@@ -50,7 +50,7 @@ python scripts/build_release_zip.py --output "$RUNNER_TEMP/incident-atlas-releas
 
 ### Local checks in this workspace
 
-The local backend suite passed **42 tests and skipped 23 PostgreSQL-marked tests** because this sandbox cannot start the embedded PostgreSQL server (`PermissionError: Operation not permitted`). The full PostgreSQL result above comes from CI, not those local skips. Local `ruff`, Python dependency audit, frontend 11/11 tests, typecheck, production build, npm audit, and evaluation commands passed. Docker/Podman are unavailable locally; the CI container job supplies that evidence. The public deployment smoke command was syntax-checked but not run against real origins because none exist.
+The local backend suite passed **42 tests and skipped 23 PostgreSQL-marked tests** because this sandbox cannot start the embedded PostgreSQL server (`PermissionError: Operation not permitted`). The full PostgreSQL result above comes from CI, not those local skips. Local `ruff`, Python dependency audit, frontend 13/13 tests, typecheck, production build, npm audit, and evaluation commands passed. Local Playwright could not launch Chromium because sandbox socket/ptrace permissions blocked the browser; Docker/Podman are unavailable locally. GitHub-hosted CI supplies the PostgreSQL, container, and browser evidence. The public deployment smoke command was syntax-checked but not run against real origins because none exist.
 
 ## Evaluation evidence and limits
 
@@ -58,7 +58,7 @@ The current rules-regression dataset is **12 project-authored synthetic cases**:
 
 `65f6949e8c0c0d2f258fd65c2760591b2ff7b38fbb1edeb38cc3dc16cbac1527`
 
-CI run #24 measured 1.0000 labeled top-1, 1.0000 mean reciprocal rank, 1.0000 expected-support evidence recall, 1.0000 abstention accuracy, and 1.0000 overall decision accuracy on this fixed dataset. These are **synthetic regression results**, not real-world incident accuracy. The earlier 0.5222 support-recall measurement belongs to the historical Step 5/6 evaluation; the present score is tied to the dataset hash above and should not be generalized beyond it.
+CI run #27 measured 1.0000 labeled top-1, 1.0000 mean reciprocal rank, 1.0000 expected-support evidence recall, 1.0000 abstention accuracy, and 1.0000 overall decision accuracy on this fixed dataset. These are **synthetic regression results**, not real-world incident accuracy. The earlier 0.5222 support-recall measurement belongs to the historical Step 5/6 evaluation; the present score is tied to the dataset hash above and should not be generalized beyond it.
 
 The executable OTLP/JSON importer is covered by a synthetic parser fixture only. There is no verified OpenTelemetry Demo version, scenario capture, imported-data hash, label, or Demo evaluation result. Keep all public scenario provenance labeled authored synthetic.
 

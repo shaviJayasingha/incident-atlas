@@ -3,7 +3,7 @@
 **Target:** GitHub → Netlify React/Vite site → Render FastAPI and PostgreSQL.
 **Current state:** configuration and CI are prepared; no Render or Netlify resources have been provisioned. Do not create recurring resources until the account, billing setup, and monthly spending cap are approved.
 
-**Verified application revision:** [`b8168985fe2bd7fec807d6691f98824b0f9b4f46`](https://github.com/shaviJayasingha/incident-atlas/commit/b8168985fe2bd7fec807d6691f98824b0f9b4f46); [CI run #24 passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45122787848). PostgreSQL grants and container startup passed in GitHub-hosted CI against PostgreSQL 17. The actual Render managed-database preflight has not run; its role privileges remain an explicit deployment gate.
+**Release-candidate application revision:** [`8f7b31fbceb34ec45724916b0dd493f99c68bc80`](https://github.com/shaviJayasingha/incident-atlas/commit/8f7b31fbceb34ec45724916b0dd493f99c68bc80) in [PR #5](https://github.com/shaviJayasingha/incident-atlas/pull/5); [CI run #27 passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45145232854). PostgreSQL grants and container startup passed in GitHub-hosted CI against PostgreSQL 17. The actual Render managed-database preflight has not run; its role privileges remain an explicit deployment gate. No production host has been provisioned.
 
 ## Local Docker Compose
 

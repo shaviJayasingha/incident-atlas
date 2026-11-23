@@ -4,7 +4,7 @@ Incident Atlas is a no-sign-in incident investigation demo. Visitors can inspect
 
 **Release status:** The source repository and CI are public. The website, API, and PostgreSQL database have not been deployed. There is no live public demo URL. Hosting remains gated on an approved spending cap and account access. Live AI remains disabled until proxy trust, global request limits, and a genuine provider request are verified.
 
-**Verified application revision:** [`b8168985fe2bd7fec807d6691f98824b0f9b4f46`](https://github.com/shaviJayasingha/incident-atlas/commit/b8168985fe2bd7fec807d6691f98824b0f9b4f46), with [GitHub Actions run #24 passing](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45122787848). The release report records the exact checks, synthetic dataset hash, local skips, and deployment blockers.
+**Release-candidate application revision:** [`8f7b31fbceb34ec45724916b0dd493f99c68bc80`](https://github.com/shaviJayasingha/incident-atlas/commit/8f7b31fbceb34ec45724916b0dd493f99c68bc80), in [PR #5](https://github.com/shaviJayasingha/incident-atlas/pull/5). [GitHub Actions run #27 passed](https://github.com/shaviJayasingha/incident-atlas/actions/runs/45145232854): PostgreSQL-backed backend checks, frontend tests/typecheck/build, dependency audits, API container runtime, desktop/mobile browser journey, and release ZIP validation. This is CI evidence for the local application, not a public deployment. The release report records exact results and remaining gates.
 
 ## Case study and source
 
