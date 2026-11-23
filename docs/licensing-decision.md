@@ -13,6 +13,4 @@ Choose one option before adding a license file:
 1. **MIT** — permissive reuse with attribution and license notice.
 2. **Apache-2.0** — permissive reuse plus an express patent grant and related terms.
 3. **No license for now** — leave the source public but do not add a license.
-4. **Another license** — provide the exact license name and any required notices.
-
 The technical deployment and public replay gates do not depend on this decision. Do not generate or publish a `LICENSE` file until the owner selects an option.

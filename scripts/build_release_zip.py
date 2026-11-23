@@ -46,12 +46,15 @@ REQUIRED_PATHS = {
 
 def forbidden(path: PurePosixPath) -> bool:
     parts = path.parts
-    if any(part in FORBIDDEN_PARTS or part.startswith(".git") for part in parts):
+    # Keep repository-owned .github workflows and .gitignore. Exclude Git's
+    # metadata directory and local auxiliary checkouts only.
+    if any(part in FORBIDDEN_PARTS or part == ".git" or part.startswith(".git-") for part in parts):
         return True
     name = path.name.lower()
-    allowed_env_examples = {".env.example", "web/.env.development.fixture.example"}
     if name == ".env" or (
-        name.startswith(".env.") and path.as_posix() not in allowed_env_examples
+        name.startswith(".env.")
+        and name != ".env.example"
+        and path.as_posix() != "web/.env.development.fixture.example"
     ):
         return True
     if name.endswith((".pem", ".key", ".p12", ".pfx", ".sqlite", ".db")):
