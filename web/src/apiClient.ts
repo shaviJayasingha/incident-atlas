@@ -24,6 +24,23 @@ import type {
 const DEFAULT_BASE = '/api/v1'
 const MAX_PAGES = 20
 const READ_TIMEOUT_MS = 12_000
+const VISITOR_ID_KEY = 'incident-atlas:anonymous-visitor-id'
+let volatileVisitorId: string | null = null
+
+function anonymousVisitorId() {
+  try {
+    const storage = window.localStorage
+    const existing = storage.getItem(VISITOR_ID_KEY)
+    if (existing && /^[0-9a-f-]{36}$/i.test(existing)) return existing
+    const created = window.crypto.randomUUID()
+    storage.setItem(VISITOR_ID_KEY, created)
+    return created
+  } catch {
+    // Private browsing restrictions should not block an approval during this tab.
+    volatileVisitorId ??= window.crypto?.randomUUID?.() ?? null
+    return volatileVisitorId
+  }
+}
 
 export class ApiClientError extends Error {
   readonly code: string
@@ -77,11 +94,17 @@ export class ApiClient implements IncidentAtlasClient {
       options.signal?.addEventListener('abort', forwardAbort, { once: true })
       const timer = method === 'GET' ? window.setTimeout(() => controller.abort(new DOMException('The API read timed out.', 'TimeoutError')), READ_TIMEOUT_MS) : undefined
       try {
+        const headers = new Headers(options.headers)
+        headers.set('Accept', 'application/json, application/problem+json')
+        if (path.includes('/mitigation-approvals')) {
+          const visitorId = anonymousVisitorId()
+          if (visitorId) headers.set('X-Incident-Atlas-Visitor-ID', visitorId)
+        }
         const response = await fetch(`${this.baseUrl}${path}`, {
           ...options,
           signal: controller.signal,
           credentials: 'omit',
-          headers: { Accept: 'application/json, application/problem+json', ...options.headers },
+          headers,
         })
         if (!response.ok) {
           const problem = parseProblem(await response.json().catch(() => undefined), response.status)
@@ -188,6 +211,18 @@ export class ApiClient implements IncidentAtlasClient {
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(body),
     })
+  }
+
+  async getApproval(report: InvestigationReport, mitigationId: string, signal?: AbortSignal) {
+    const path = report.source === 'stored_replay'
+      ? `/replays/${encodeURIComponent(report.replay_id ?? report.id)}/mitigation-approvals/${encodeURIComponent(mitigationId)}`
+      : `/investigations/${encodeURIComponent(report.id)}/mitigation-approvals/${encodeURIComponent(mitigationId)}`
+    try {
+      return await this.request<ApprovalResponse>(path, { signal }, true)
+    } catch (error) {
+      if (error instanceof ApiClientError && error.code === 'approval_not_found') return null
+      throw error
+    }
   }
 
   async approve(report: InvestigationReport, body: ApprovalCreate, signal?: AbortSignal) {

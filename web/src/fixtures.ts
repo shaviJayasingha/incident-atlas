@@ -23,6 +23,8 @@ import type {
 type Scenario = (typeof scenariosJson.scenarios)[number]
 type Replay = (typeof replaysJson.reports)[number]
 const FIXTURE_VERSION = scenariosJson.fixture_version
+const fixtureApprovals = new Map<string, ApprovalResponse>()
+const fixtureApprovalKey = (reportId: string, mitigationId: string) => `incident-atlas:fixture-approval:${reportId}:${mitigationId}`
 const snapshots: Record<string, { id: string; sha: string }> = {
   'inc-cache-collapse-001': { id: 'snap-inc-cache-collapse-001-1.0.0', sha: '7d09c04c3856d9fcc5e1c9b1a07581bbe5447e162d85dca700c7aa139d55d15d' },
   'inc-inventory-pool-002': { id: 'snap-inc-inventory-pool-002-1.0.0', sha: '7ee8b70c152ea0e654758c62c7146b7b0df646f6c9c8cd0a717b59e5bd13f75d' },
@@ -85,9 +87,21 @@ export const fixtureClient: IncidentAtlasClient = {
   getReport: async (id, source: Source) => source === 'stored_replay' ? fixtureClient.getReplay(id) : undefined,
   getEvidence: async (incidentId, evidenceId, snapshotId) => { const scenario = scenariosJson.scenarios.find(item => item.id === incidentId); const item = scenario ? evidenceFor(scenario).find(evidence => evidence.evidence_id === evidenceId) : undefined; return item && (!snapshotId || item.snapshot_id === snapshotId) ? item : undefined },
   createInvestigation: async (_body: InvestigationCreate) => { throw new Error('Live investigations are unavailable in fixture preview.') },
+  getApproval: async (report, mitigationId) => {
+    const key = fixtureApprovalKey(report.id, mitigationId)
+    try {
+      const saved = window.localStorage.getItem(key)
+      if (saved) return JSON.parse(saved) as ApprovalResponse
+    } catch { /* local-only fallback for storage-restricted previews */ }
+    return fixtureApprovals.get(key) ?? null
+  },
   approve: async (report: InvestigationReport, body: ApprovalCreate): Promise<ApprovalResponse> => {
     if (!body.simulation_acknowledged) throw new Error('Explicit simulation acknowledgment is required.')
-    return { id: `fixture-approval-${crypto.randomUUID()}`, investigation_id: report.source === 'live_ai' ? report.id : null, replay_id: report.source === 'stored_replay' ? report.replay_id ?? report.id : null, mitigation_id: body.mitigation_id, status: 'simulated_approved', simulation_only: true, external_action_performed: false, recorded_at: new Date().toISOString(), message: 'Simulation recorded; no system was changed.', request_id: 'fixture-approval-local' }
+    const approval = { id: `fixture-approval-${crypto.randomUUID()}`, investigation_id: report.source === 'live_ai' ? report.id : null, replay_id: report.source === 'stored_replay' ? report.replay_id ?? report.id : null, mitigation_id: body.mitigation_id, status: 'simulated_approved', simulation_only: true, external_action_performed: false, recorded_at: new Date().toISOString(), message: 'Simulation recorded; no system was changed.', request_id: 'fixture-approval-local' } as const
+    const key = fixtureApprovalKey(report.id, body.mitigation_id)
+    fixtureApprovals.set(key, approval)
+    try { window.localStorage.setItem(key, JSON.stringify(approval)) } catch { /* local-only fallback for storage-restricted previews */ }
+    return approval
   },
 }
 

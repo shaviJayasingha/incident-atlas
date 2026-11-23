@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import subprocess
 import sys
 import zipfile
@@ -129,8 +130,13 @@ def main() -> int:
     except (OSError, subprocess.CalledProcessError, ValueError) as exc:
         print(f"Release archive failed: {exc}", file=sys.stderr)
         return 1
+    output = args.output.resolve()
+    checksum = hashlib.sha256(output.read_bytes()).hexdigest()
+    sidecar = output.with_name(f"{output.name}.sha256")
+    sidecar.write_text(f"{checksum}  {output.name}\n", encoding="utf-8")
     print(f"Inspected {count} tracked project files ({size:,} uncompressed bytes).")
-    print(f"Release archive: {args.output.resolve()}")
+    print(f"Release archive: {output}")
+    print(f"SHA-256: {checksum}  {sidecar}")
     print("Excluded generated output, local environments, secrets, caches, and Git metadata.")
     return 0
 

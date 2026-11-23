@@ -75,6 +75,8 @@ Join table `incident_id`, `service_id`, `role` (`affected`, `dependency`, `upstr
 
 `audit_events` records replay access, investigation lifecycle, and simulation approvals without storing raw sensitive input. `guest_rate_events` stores only HMAC-derived source hashes, action, and timestamp for anonymous rate accounting. Expired rate rows are deleted before a rate check, retaining at most the longest configured live/approval window (currently no more than 24 hours) while rate limits remain enabled.
 
+`simulation_approvals.visitor_session_hash` stores an HMAC of the browser's random anonymous UUID when `X-Incident-Atlas-Visitor-ID` is present. Separate browser profiles on the same public IP can record separate simulations, and a reload can retrieve only the matching browser's saved record. Callers without the header fall back to the proxy-validated client address. This token is a convenience identity for the public demo, not authentication; rate limits continue to use the trusted client address and are shared by visitors behind the same NAT.
+
 ## Relationships
 
 ```mermaid

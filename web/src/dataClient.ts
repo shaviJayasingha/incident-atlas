@@ -24,6 +24,7 @@ export const dataClient: IncidentAtlasClient = {
   getReport: (id: string, source: Source, signal?: AbortSignal) => getClient().then(client => client.getReport(id, source, signal)),
   getEvidence: (incidentId: string, evidenceId: string, snapshotId?: string, signal?: AbortSignal) => getClient().then(client => client.getEvidence(incidentId, evidenceId, snapshotId, signal)),
   createInvestigation: (body: InvestigationCreate, key: string, signal?: AbortSignal) => getClient().then(client => client.createInvestigation(body, key, signal)),
+  getApproval: (report: InvestigationReport, mitigationId: string, signal?: AbortSignal) => getClient().then(client => client.getApproval(report, mitigationId, signal)),
   approve: (report: InvestigationReport, body: ApprovalCreate, signal?: AbortSignal): Promise<ApprovalResponse> => getClient().then(client => client.approve(report, body, signal)),
 }
 

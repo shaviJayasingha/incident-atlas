@@ -32,6 +32,8 @@
 | `GET /api/v1/investigations/{investigation_id}` | Fetch a persisted live report. | `200` report with `source: "live_ai"` and trace metadata. |
 | `POST /api/v1/investigations/{investigation_id}/mitigation-approvals` | Record a simulated approval for a proposal in a live report. | `201` simulation record; no external action. |
 | `POST /api/v1/replays/{replay_id}/mitigation-approvals` | Record a simulated approval for a proposal in a stored replay. | `201` simulation record; no external action. This lets a visitor complete the no-key journey. |
+| `GET /api/v1/investigations/{investigation_id}/mitigation-approvals/{mitigation_id}` | Restore the current anonymous browser's persisted approval after reload. | `200` saved simulation or `404 approval_not_found`. |
+| `GET /api/v1/replays/{replay_id}/mitigation-approvals/{mitigation_id}` | Restore a saved approval for a stored replay after reload. | `200` saved simulation or `404 approval_not_found`; no model call. |
 | `GET /api/v1/snapshots/{snapshot_id}` | Read immutable evidence snapshot metadata. | `200` with fixture version, window, SHA-256, and item count. |
 | `GET /api/v1/snapshots/{snapshot_id}/evidence/{evidence_id}` | Resolve a report citation inside the recorded snapshot. | `200` only when that exact item is present in the snapshot. |
 
@@ -152,7 +154,7 @@ Response:
 }
 ```
 
-Both approval routes accept the same request shape and behavior. They reject false/missing acknowledgment, unknown result/mitigation, or a duplicate approval with a conflicting body. A unique constraint prevents duplicate approval for the same result and mitigation. They never accept a shell command, URL, target account, production resource ID, or executable action.
+Both approval write routes accept the same request shape and behavior. They reject false/missing acknowledgment, unknown result/mitigation, or a duplicate approval. A browser creates a random anonymous UUID in local storage and sends it as `X-Incident-Atlas-Visitor-ID`; the API stores only an HMAC of that value in `visitor_session_hash`. This gives separate browser profiles behind one shared IP separate simulation records and lets the same browser restore its record after reload. Non-browser callers without that header fall back to the trusted client address. The guest rate limit remains network-scoped, so visitors behind one NAT share its request allowance. The GET routes return only the matching anonymous browser record; no approval for another visitor is exposed. These identities are convenience boundaries, not user authentication. The routes never accept a shell command, URL, target account, production resource ID, or executable action.
 
 ## Errors
 

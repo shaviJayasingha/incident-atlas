@@ -33,10 +33,14 @@ try {
   await page.getByText('PROVENANCE · STORED REPLAY').waitFor()
   assert.equal(await page.locator('.report-banner-stamp strong').innerText(), 'NO')
   await capture(page, '03-stored-replay-desktop.png')
-  await page.getByRole('link', { name: /ev-deploy-catalog-042/ }).click()
-  await page.waitForURL(/evidence=ev-deploy-catalog-042/)
-  await page.getByText('ev-deploy-catalog-042', { exact: true }).first().waitFor()
-  await page.goBack()
+const desktopCitations = await page.locator('.evidence-link').evaluateAll(links => links.map(link => ({ href: link.href, id: link.querySelector('b')?.textContent })))
+assert.ok(desktopCitations.length > 0, 'the replay should include linked evidence')
+for (const citation of desktopCitations) {
+  await page.goto(citation.href)
+  await page.getByText(citation.id, { exact: true }).last().waitFor()
+}
+await page.goto(`${baseUrl.replace(/\/$/, '')}/investigations/replay-cache-v1?source=stored_replay`)
+await page.getByText('PROVENANCE · STORED REPLAY').waitFor()
   await page.getByRole('button', { name: /Review simulated mitigation/ }).click()
   await page.getByRole('heading', { name: 'Review proposed mitigation' }).waitFor()
   await page.getByRole('button', { name: 'Approve simulated mitigation' }).click()
@@ -47,21 +51,55 @@ try {
   await approvalResult.getByText(/simulation_only=true/).first().waitFor()
   await approvalResult.getByText(/external_action_performed=false/).first().waitFor()
   await capture(page, '04-simulated-approval-desktop.png')
+await page.reload()
+await page.locator('.approval-success').getByText(/simulation_only=true/).waitFor()
+await page.locator('.approval-success').getByText(/external_action_performed=false/).waitFor()
 
-  const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } })
+// A separate browser context shares the API client IP but gets a different
+// anonymous visitor ID, so NAT-shared guests can record their own simulation.
+const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+const mobilePage = await mobileContext.newPage()
+const mobilePageErrors = []
+mobilePage.on('pageerror', error => mobilePageErrors.push(error.message))
+const assertMobileFits = async () => {
+  const overflow = await mobilePage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  assert.equal(overflow, 0, 'mobile page should not overflow horizontally')
+}
   await mobilePage.goto(baseUrl)
   await mobilePage.getByRole('heading', { name: /Follow the evidence/ }).waitFor()
   await capture(mobilePage, '05-dashboard-mobile.png')
-  const mobileOverflow = await mobilePage.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  )
-  assert.equal(mobileOverflow, 0, 'mobile home should not overflow horizontally')
+await assertMobileFits()
   await mobilePage.getByRole('link', { name: /Explore incidents/ }).focus()
   assert.equal(await mobilePage.evaluate(() => document.activeElement?.textContent?.includes('Explore incidents')), true)
+await mobilePage.getByRole('link', { name: /Explore incidents/ }).click()
+await mobilePage.getByRole('link', { name: /Catalog latency after cache key change/ }).click()
+await mobilePage.getByRole('heading', { name: 'Incident timeline' }).waitFor()
+await assertMobileFits()
+await mobilePage.getByRole('button', { name: 'View stored replay' }).click()
+await mobilePage.getByText('PROVENANCE · STORED REPLAY').waitFor()
+await assertMobileFits()
+const mobileCitations = await mobilePage.locator('.evidence-link').evaluateAll(links => links.map(link => ({ href: link.href, id: link.querySelector('b')?.textContent })))
+assert.ok(mobileCitations.length > 0)
+for (const citation of mobileCitations) {
+  await mobilePage.goto(citation.href)
+  await mobilePage.getByText(citation.id, { exact: true }).last().waitFor()
+  await assertMobileFits()
+}
+await mobilePage.goto(`${baseUrl.replace(/\/$/, '')}/investigations/replay-cache-v1/mitigation?source=stored_replay`)
+await mobilePage.getByRole('heading', { name: 'Review proposed mitigation' }).waitFor()
+await assertMobileFits()
+await mobilePage.getByRole('button', { name: 'Approve simulated mitigation' }).click()
+await mobilePage.getByLabel(/I understand this is a simulation/).check()
+await mobilePage.getByRole('button', { name: /Confirm simulation/ }).click()
+const mobileApproval = mobilePage.locator('.approval-success').filter({ hasText: 'simulation_only=true' }).last()
+await mobileApproval.getByText(/external_action_performed=false/).waitFor()
+assert.notEqual(await mobileApproval.locator('p').innerText(), await approvalResult.locator('p').innerText(), 'a second visitor sharing the IP should receive a separate approval record')
+assert.deepEqual(mobilePageErrors, [])
 
   assert.deepEqual(pageErrors, [], 'the visitor journey should not emit browser exceptions')
-  console.log('Browser smoke passed: desktop replay, evidence, persisted approval, mobile layout and keyboard focus.')
+console.log('Browser smoke passed: desktop and mobile replay, all citations, refresh-persisted approval, separate same-IP visitor approval, and keyboard focus.')
   await mobilePage.close()
+await mobileContext.close()
 } finally {
   await browser.close()
 }
